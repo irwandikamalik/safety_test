@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environment
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# Test cache
+.pytest_cache/
+
+# Logs
+*.log
+
+# Temporary files
+project_tree.txt
+project_tree_full.txt
+
+# Build
+build/
+dist/
+*.spec

@@ -1,0 +1,34 @@
+
+{
+    "mode": "SIMULATION",
+    "instruments": {
+        "kikusui_tos9302": {
+            "name": "Kikusui TOS9302",
+            "driver": "kikusui_tos9300",
+            "connection": {
+                "interface": "SERIAL",
+                "port": "COM4",
+                "baudrate": 9600,
+                "timeout": 5000
+            },
+            "supported_functions": [
+                "ac_withstanding"
+            ]
+        },
+        "yokogawa_wt310e": {
+            "name": "Yokogawa WT310E",
+            "driver": "generic_scpi",
+            "connection": {
+                "interface": "USB",
+                "resource": "USB0::...::INSTR",
+                "timeout": 5000
+            },
+            "supported_functions": [
+                "voltage",
+                "current",
+                "power",
+                "frequency"
+            ]
+        }
+    }
+}

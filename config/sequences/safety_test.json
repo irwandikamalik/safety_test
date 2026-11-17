@@ -1,0 +1,115 @@
+{
+    "sequence_id": "SAFETY_TEST_001",
+    "name": "Product Safety Test",
+    "version": 1,
+    "steps": [
+        {
+            "id": "step_001",
+            "type": "input",
+            "name": "Input Serial Number",
+            "enabled": true,
+            "parameters": {
+                "field": "serial_number",
+                "label": "Serial Number",
+                "placeholder": "Scan or type Serial Number",
+                "required": true
+            }
+        },
+        {
+            "id": "step_002",
+            "type": "validate_serial",
+            "name": "Validate Serial Number",
+            "enabled": true,
+            "parameters": {
+                "source": "serial_number",
+                "min_length": 1,
+                "max_length": 50
+            }
+        },
+        {
+            "id": "step_003",
+            "type": "input",
+            "name": "Input Door Top",
+            "enabled": true,
+            "parameters": {
+                "field": "door_top",
+                "label": "Door Top Barcode",
+                "placeholder": "Scan Door Top Barcode",
+                "required": true
+            }
+        },
+        {
+            "id": "step_004",
+            "type": "validate_barcode",
+            "name": "Validate Door Top",
+            "enabled": true,
+            "parameters": {
+                "source": "door_top",
+                "min_length": 1,
+                "max_length": 100
+            }
+        },
+        {
+            "id": "step_005",
+            "type": "input",
+            "name": "Input Door Bottom",
+            "enabled": true,
+            "parameters": {
+                "field": "door_bottom",
+                "label": "Door Bottom Barcode",
+                "placeholder": "Scan Door Bottom Barcode",
+                "required": true
+            }
+        },
+        {
+            "id": "step_006",
+            "type": "validate_barcode",
+            "name": "Validate Door Bottom",
+            "enabled": true,
+            "parameters": {
+                "source": "door_bottom",
+                "min_length": 1,
+                "max_length": 100
+            }
+        },
+        {
+            "id": "step_007",
+            "type": "approval",
+            "name": "Safety Preparation Approval",
+            "enabled": true,
+            "parameters": {
+                "message": "Pastikan produk sudah terpasang dengan benar, area pengujian aman, dan seluruh koneksi telah diperiksa sebelum melanjutkan."
+            }
+        },
+        {
+            "id": "step_008",
+            "type": "instrument_test",
+            "name": "AC Withstanding Test",
+            "enabled": true,
+            "parameters": {
+                "instrument": "kikusui_tos9302",
+                "function": "ac_withstanding",
+                "test_parameters": {
+                    "test_voltage_V": 1500,
+                    "test_duration_s": 2.0,
+                    "simulation_current_mA": 0.42
+                }
+            }
+        },
+        {
+            "id": "step_009",
+            "type": "instrument_test",
+            "name": "AC Earth Test",
+            "enabled": true,
+            "parameters": {
+                "instrument": "kikusui_tos9302",
+                "function": "earth_test",
+                "test_parameters": {
+                    "test_voltage_V": 1500,
+                    "test_duration_s": 2.0,
+                    "simulation_current_mA": 0.42
+                }
+            }
+        }
+    ]
+}
