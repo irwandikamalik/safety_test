@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 from app.ui.dashboard import DashboardPage
 from app.ui.configuration_page import ConfigurationPage
 from app.ui.dialogs import OperatorDialog
+from app.ui.history_page import HistoryPage
 
 
 class MainWindow(QMainWindow):
@@ -74,6 +75,10 @@ class MainWindow(QMainWindow):
             "Test Execution", 0, side_layout
         )
 
+        self.create_nav_button(
+            "Test History", 1, side_layout
+        )
+
         side_layout.addSpacing(15)
 
         caption = QLabel("CONFIGURATION")
@@ -81,15 +86,15 @@ class MainWindow(QMainWindow):
         side_layout.addWidget(caption)
 
         self.create_nav_button(
-            "Sequence JSON", 1, side_layout
+            "Sequence JSON", 2, side_layout
         )
 
         self.create_nav_button(
-            "Instruments JSON", 2, side_layout
+            "Instruments JSON", 3, side_layout
         )
 
         self.create_nav_button(
-            "Parameters JSON", 3, side_layout
+            "Parameters JSON", 4, side_layout
         )
 
         side_layout.addStretch()
@@ -154,6 +159,8 @@ class MainWindow(QMainWindow):
 
         self.dashboard = DashboardPage()
 
+        self.history_page = HistoryPage()
+
         self.sequence_page = ConfigurationPage(
             "Sequence Configuration",
             [
@@ -186,6 +193,7 @@ class MainWindow(QMainWindow):
 
         pages = [
             self.dashboard,
+            self.history_page,
             self.sequence_page,
             self.instrument_page,
             self.parameter_page
@@ -236,8 +244,12 @@ class MainWindow(QMainWindow):
 
         self.stack.setCurrentIndex(index)
 
+        if index == 1:
+            self.history_page.refresh_history()
+
         titles = [
             "Test Execution",
+            "Test History",
             "Sequence Configuration",
             "Instrument Configuration",
             "Test Parameters"

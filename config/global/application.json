@@ -1,0 +1,6 @@
+
+{
+    "application_mode": "SIMULATION",
+    "default_model": "MODEL-A",
+    "allow_hardware_mode": false
+}

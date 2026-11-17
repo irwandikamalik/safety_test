@@ -16,11 +16,13 @@ from PySide6.QtWidgets import (
     QTextEdit,
     QProgressBar,
     QSplitter,
-    QMessageBox
+    QMessageBox,
+    QComboBox
 )
 
 from app.services.config_service import ConfigService
 from app.core.workflow_engine import WorkflowEngine
+from app.services.model_service import ModelService
 
 from app.ui.dialogs import (
     InputDialog,
@@ -56,6 +58,11 @@ class DashboardPage(QWidget):
         self.engine = None
 
         self.service = ConfigService()
+        self.model_service = ModelService()
+
+        self.selected_model_id = None
+        self.model_configuration = None
+        self.model_validation = None
 
         self.build_ui()
 
@@ -73,6 +80,52 @@ class DashboardPage(QWidget):
         )
         subtitle.setObjectName("Muted")
         root.addWidget(subtitle)
+
+        # ==========================================
+        # MODEL SELECTOR
+        # ==========================================
+
+        model_frame, model_layout = create_panel(
+            "Product Model Selection"
+        )
+
+        model_row = QHBoxLayout()
+
+        self.model_combo = QComboBox()
+        self.model_combo.setMinimumHeight(36)
+
+        self.refresh_model_button = QPushButton(
+            "Refresh Models"
+        )
+
+        self.refresh_model_button.setMinimumHeight(36)
+
+        model_row.addWidget(self.model_combo, 1)
+        model_row.addWidget(self.refresh_model_button)
+
+        model_layout.addLayout(model_row)
+
+        self.model_status_label = QLabel(
+            "No model selected."
+        )
+
+        self.model_status_label.setWordWrap(True)
+
+        model_layout.addWidget(
+            self.model_status_label
+        )
+
+        root.addWidget(model_frame)
+
+        self.model_combo.currentIndexChanged.connect(
+            self.on_model_changed
+        )
+
+        self.refresh_model_button.clicked.connect(
+            self.refresh_models
+        )
+
+        self.refresh_models()
 
         top_layout = QHBoxLayout()
 
@@ -215,6 +268,123 @@ class DashboardPage(QWidget):
 
         root.addWidget(splitter, 1)
 
+    def refresh_models(self):
+
+        if self.engine and self.engine.is_running:
+            return
+
+        self.model_combo.blockSignals(True)
+        self.model_combo.clear()
+
+        self.selected_model_id = None
+        self.model_configuration = None
+        self.model_validation = None
+
+        try:
+
+            models = self.model_service.discover_models()
+
+            for model in models:
+
+                if model.get("enabled") is not True:
+                    continue
+
+                self.model_combo.addItem(
+                    f'{model["model_id"]} - {model["model_name"]}',
+                    model["model_id"]
+                )
+
+        except Exception as error:
+
+            self.model_status_label.setText(
+                f"Model discovery failed: {error}"
+            )
+
+        self.model_combo.blockSignals(False)
+
+        if self.model_combo.count() == 0:
+
+            self.model_status_label.setText(
+                "No enabled model found."
+            )
+
+            return
+
+        self.model_combo.setCurrentIndex(0)
+
+        self.on_model_changed(0)
+
+
+    def on_model_changed(self, index):
+
+        if index < 0:
+            return
+
+        if self.engine and self.engine.is_running:
+            return
+
+        model_id = self.model_combo.itemData(index)
+
+        if not model_id:
+            return
+
+        self.selected_model_id = model_id
+
+        self.model_configuration = None
+        self.model_validation = None
+
+        try:
+
+            self.model_configuration = (
+                self.model_service.load_model(model_id)
+            )
+
+            self.model_validation = (
+                self.model_service.validate_model(model_id)
+            )
+
+            if self.model_validation["valid"]:
+
+                self.model_status_label.setStyleSheet(
+                    "color: #77D6A5; font-weight: bold;"
+                )
+
+                self.model_status_label.setText(
+                    f"MODEL READY: {model_id}\n"
+                    "Configuration validation passed. "
+                    "Execution integration is still pending."
+                )
+
+            else:
+
+                errors = self.model_validation["errors"]
+
+                error_text = "\n".join(
+                    f"• {error}" for error in errors
+                )
+
+                self.model_status_label.setStyleSheet(
+                    "color: #FF8585; font-weight: bold;"
+                )
+
+                self.model_status_label.setText(
+                    f"MODEL INVALID: {model_id}\n"
+                    f"{error_text}"
+                )
+
+        except Exception as error:
+
+            self.model_status_label.setStyleSheet(
+                "color: #FF8585; font-weight: bold;"
+            )
+
+            self.model_status_label.setText(
+                f"MODEL ERROR: {error}"
+            )
+
+            self.model_configuration = None
+            self.model_validation = None
+
     def set_operator(self, operator):
 
         self.operator = operator
@@ -256,6 +426,7 @@ class DashboardPage(QWidget):
                 QTableWidgetItem("WAITING")
             )
 
+
     def start_sequence(self):
 
         if not self.operator:
@@ -268,40 +439,88 @@ class DashboardPage(QWidget):
 
             return
 
+        # --------------------------------------
+        # MODEL VALIDATION
+        # --------------------------------------
+
+        if not self.selected_model_id:
+
+            QMessageBox.warning(
+                self,
+                "Model Required",
+                "Select a product model first."
+            )
+
+            return
+
         try:
 
-            sequence = self.service.load_json(
-                "sequences/safety_test.json"
+            validation = self.model_service.validate_model(
+                self.selected_model_id
             )
 
-            instruments = self.service.load_json(
-                "instruments/instruments.json"
+            self.model_validation = validation
+
+            if not validation["valid"]:
+
+                errors = "\n".join(
+                    f"• {error}"
+                    for error in validation["errors"]
+                )
+
+                QMessageBox.warning(
+                    self,
+                    "Invalid Model Configuration",
+                    "The selected model cannot be executed.\n\n"
+                    f"{errors}"
+                )
+
+                return
+
+            # Reload configuration before execution.
+            self.model_configuration = (
+                self.model_service.load_model(
+                    self.selected_model_id
+                )
             )
 
-            parameters = self.service.load_json(
-                "parameters/model_a.json"
-            )
+            sequence = self.model_configuration["sequence"]
 
             if sequence.get("version") != 1:
+
                 raise ValueError(
                     "Unsupported sequence version."
                 )
+
+            # ----------------------------------
+            # PREPARE DASHBOARD
+            # ----------------------------------
 
             self.load_sequence_table(
                 sequence.get("steps", [])
             )
 
-            self.serial_label.setText("Serial Number: -")
-            self.door_top_label.setText("Door Top: -")
-            self.door_bottom_label.setText("Door Bottom: -")
+            self.serial_label.setText(
+                "Serial Number: -"
+            )
+
+            self.door_top_label.setText(
+                "Door Top: -"
+            )
+
+            self.door_bottom_label.setText(
+                "Door Bottom: -"
+            )
 
             self.terminal.clear()
             self.progress.setValue(0)
 
+            # ----------------------------------
+            # CREATE WORKFLOW ENGINE
+            # ----------------------------------
+
             self.engine = WorkflowEngine(
-                sequence,
-                instruments,
-                parameters,
+                self.model_configuration,
                 self.operator,
                 self
             )
