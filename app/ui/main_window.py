@@ -1,4 +1,8 @@
-from PySide6.QtCore import QTimer
+from pathlib import Path
+
+from PySide6.QtGui import QIcon
+
+from PySide6.QtCore import QTimer, QSize
 
 from PySide6.QtWidgets import (
     QMainWindow,
@@ -29,6 +33,12 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(
             "Industrial Safety Test Platform"
         )
+
+        self.asset_root = (
+            Path(__file__).resolve().parents[2] / "assets"
+        )
+
+        self.icon_root = self.asset_root / "icons"
 
         self.resize(1440, 900)
         self.setMinimumSize(1100, 720)
@@ -74,11 +84,11 @@ class MainWindow(QMainWindow):
         side_layout.addWidget(caption)
 
         self.create_nav_button(
-            "Test Execution", 0, side_layout
+            "Test Execution", 0, side_layout, "test-execution.svg"
         )
 
         self.create_nav_button(
-            "Test History", 1, side_layout
+            "Test History", 1, side_layout, "test-history.svg"
         )
 
         side_layout.addSpacing(15)
@@ -88,19 +98,20 @@ class MainWindow(QMainWindow):
         side_layout.addWidget(caption)
 
         self.create_nav_button(
-            "Model Configuration", 2, side_layout
+            "Model Configuration", 2, side_layout, "model-configuration.svg"
         )
 
         self.create_nav_button(
-            "Serial Mapping", 3, side_layout
+            "Serial Mapping", 3, side_layout, "serial-mapping.svg"
         )
 
         self.create_nav_button(
-            "Sequence JSON", 4, side_layout
+            "Sequence JSON", 4, side_layout, "workflow-editor.svg"
         )
 
         self.create_nav_button(
-            "Instrument Configuration", 5, side_layout
+            "Instrument Configuration", 5, side_layout,
+            "instrument-configuration.svg"
         )
 
         side_layout.addStretch()
@@ -121,6 +132,14 @@ class MainWindow(QMainWindow):
 
         logout_button = QPushButton("Logout")
 
+        logout_icon = self.icon_root / "logout.svg"
+
+        if logout_icon.is_file():
+            logout_button.setIcon(QIcon(str(logout_icon)))
+            logout_button.setIconSize(QSize(20, 20))
+
+        logout_button.clicked.connect(self.logout)
+
         logout_button.setStyleSheet("""
             background: #263A55;
             color: white;
@@ -129,7 +148,6 @@ class MainWindow(QMainWindow):
             padding: 10px;
         """)
 
-        logout_button.clicked.connect(self.logout)
         side_layout.addWidget(logout_button)
 
         # MAIN CONTENT
@@ -235,11 +253,25 @@ class MainWindow(QMainWindow):
 
         self.setStatusBar(status)
 
-    def create_nav_button(self, text, index, layout):
-
+    def create_nav_button(
+        self,
+        text,
+        index,
+        layout,
+        icon_filename=None
+    ):
         button = QPushButton(text)
         button.setObjectName("NavButton")
         button.setCheckable(True)
+
+        if icon_filename:
+            icon_path = self.icon_root / icon_filename
+
+            if icon_path.is_file():
+                button.setIcon(QIcon(str(icon_path)))
+                button.setIconSize(QSize(20, 20))
+            else:
+                print(f"Icon not found: {icon_path}")
 
         button.clicked.connect(
             lambda checked=False, i=index: self.navigate(i)
