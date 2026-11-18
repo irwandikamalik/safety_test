@@ -28,7 +28,7 @@ class WorkflowEngine(QObject):
     finished = Signal()
     failed = Signal(str)
 
-    measurement_sample = Signal(dict, int, float)
+    measurement_sample = Signal(dict, int, float, bool)
     measurement_completed = Signal(dict)
     measurement_failed = Signal(str)
 

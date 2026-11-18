@@ -11,7 +11,7 @@ from app.instruments.instrument_manager import InstrumentManager
 
 class MeasurementWorker(QThread):
 
-    sample_received = Signal(dict, int, float)
+    sample_received = Signal(dict, int, float, bool)
     measurement_completed = Signal(dict)
     measurement_failed = Signal(str)
 
@@ -76,12 +76,43 @@ class MeasurementWorker(QThread):
             # ModelService supplies the instrument mapping.
             # InstrumentManager expects an object containing
             # the "instruments" property.
+            # Normalize model instrument configuration.
+            if "instruments" in self.model_instruments:
+                normalized_model_configuration = self.model_instruments
+            else:
+                normalized_model_configuration = {
+                    "instruments": self.model_instruments
+                }
+
+            # Determine measurement source.
+            measurement_source = self.application_configuration.get(
+                "measurement_source",
+                "SIMULATION"
+            )
+
+            if measurement_source not in ("SIMULATION", "HARDWARE"):
+                raise ValueError(
+                    f"Invalid measurement source: {measurement_source}"
+                )
+
+            hardware_measurement_ids = (
+                {"wt310e"}
+                if measurement_source == "HARDWARE"
+                else set()
+            )
+
             manager = InstrumentManager(
-                {"instruments": self.model_instruments},
+                normalized_model_configuration,
                 self.instrument_catalog,
                 self.application_configuration,
-                hardware_measurement_ids={"wt310e"}
+                hardware_measurement_ids=hardware_measurement_ids
             )
+
+            print("\n========== WORKER DEBUG ==========")
+            print("REQUESTED ID:", repr(self.instrument_id))
+            print("LOADED IDS:", list(manager.instruments.keys()))
+            print("WT310E EXISTS:", "wt310e" in manager.instruments)
+            print("=================================\n")
 
             connected = manager.connect(
                 self.instrument_id
@@ -96,12 +127,20 @@ class MeasurementWorker(QThread):
                 self.instrument_id
             )
 
-            identity = instrument.identify()
+            if (
+                self.application_configuration.get(
+                    "application_mode",
+                    "SIMULATION"
+                ) == "HARDWARE"
+            ):
+                identity = instrument.identify()
 
-            if "WT310E" not in identity.upper():
-                raise RuntimeError(
-                    f"Unexpected instrument identity: {identity}"
-                )
+                if "WT310E" not in identity.upper():
+                    raise RuntimeError(
+                        f"Unexpected instrument identity: {identity}"
+                    )
+            else:
+                print("WT310E: Running in simulation mode.")
 
             # Start measurement timer AFTER successful connection.
             started_at = time.monotonic()
@@ -140,7 +179,8 @@ class MeasurementWorker(QThread):
                 self.sample_received.emit(
                     sample["measurements"],
                     sample_number,
-                    sample["elapsed_s"]
+                    sample["elapsed_s"],
+                    result.get("simulation", False)
                 )
 
                 if elapsed >= self.duration_s:

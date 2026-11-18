@@ -1,7 +1,7 @@
 
 from datetime import datetime
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QShortcut, QKeySequence
 from PySide6.QtWidgets import (
     QWidget,
@@ -258,9 +258,8 @@ class DashboardPage(QWidget):
         )
 
         self.start_shortcut.activated.connect(
-            self.start_sequence
+            self.start_button.click
         )
-
 
         # ABORT SEQUENCE - ESC
 
@@ -413,6 +412,7 @@ class DashboardPage(QWidget):
             # ----------------------------------
 
             self.start_button.setEnabled(True)
+            self.start_button.setFocus()
 
             self.add_log(
                 "SYSTEM",
@@ -770,7 +770,14 @@ class DashboardPage(QWidget):
             )
 
             if not dialog.exec():
+
                 self.abort_sequence()
+
+                QTimer.singleShot(
+                    0,
+                    self.focus_start_button
+                )
+
                 return
 
             values = dialog.get_values()
@@ -904,6 +911,10 @@ class DashboardPage(QWidget):
                 f"{field.replace('_', ' ').title()}: {value}"
             )
 
+    def focus_start_button(self):
+        if self.start_button.isEnabled():
+            self.start_button.setFocus()
+
     def abort_sequence(self):
 
         if not self.engine:
@@ -925,6 +936,11 @@ class DashboardPage(QWidget):
         self.serial_input.setEnabled(True)
         self.detect_model_button.setEnabled(True)
 
+        QTimer.singleShot(
+            0,
+            self.focus_start_button
+        )
+        
     def add_log(self, category, message):
 
         timestamp = datetime.now().strftime("%H:%M:%S")
@@ -979,7 +995,27 @@ class DashboardPage(QWidget):
             "Test sequence completed and result saved."
         )
 
+        self.serial_input.clear()
 
+        QTimer.singleShot(0, self.serial_input.setFocus)
+
+    def workflow_failed(self, message):
+
+        self.add_log("ERROR", message)
+
+        self.start_button.setEnabled(True)
+        self.abort_button.setEnabled(False)
+
+        self.serial_input.setEnabled(True)
+        self.detect_model_button.setEnabled(True)
+
+        QMessageBox.critical(
+            self,
+            "Workflow Failed",
+            message
+        )
+
+        QTimer.singleShot(0, self.serial_input.setFocus)
 
     def workflow_failed(self, message):
 

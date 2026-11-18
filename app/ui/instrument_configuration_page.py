@@ -951,7 +951,10 @@ class InstrumentConfigurationPage(QWidget):
 
             instrument.connect()
 
-            identity = instrument.identify()
+            if hasattr(instrument, "identify"):
+                identity = instrument.identify()
+            else:
+                identity = "Simulation Instrument (No physical connection)"
 
             expected_name = configuration.get(
                 "name", "Instrument"

@@ -392,15 +392,38 @@ class LiveMeasurementDialog(QDialog):
         # STATUS
         # ======================================
 
-        self.status_label = QLabel("CONNECTING...")
-        self.status_label.setStyleSheet("""
-            font-size: 10pt;
-            font-weight: bold;
-            color: #D69E36;
-            padding: 5px 0px;
+        status_layout = QHBoxLayout()
+        status_layout.setSpacing(8)
+
+        self.source_indicator = QLabel("●")
+        self.source_indicator.setStyleSheet("""
+            font-size: 15pt;
+            color: #94A3B8;
         """)
 
-        layout.addWidget(self.status_label)
+        self.source_status_label = QLabel(
+            "SOURCE: CONNECTING..."
+        )
+
+        self.source_status_label.setStyleSheet("""
+            font-size: 9pt;
+            font-weight: bold;
+            color: #D69E36;
+        """)
+
+        self.status_label = QLabel("CONNECTING...")
+        self.status_label.setStyleSheet("""
+            font-size: 9pt;
+            font-weight: bold;
+            color: #D69E36;
+        """)
+
+        status_layout.addWidget(self.source_indicator)
+        status_layout.addWidget(self.source_status_label)
+        status_layout.addStretch()
+        status_layout.addWidget(self.status_label)
+
+        layout.addLayout(status_layout)
 
         # ======================================
         # MEASUREMENT INFORMATION
@@ -473,7 +496,7 @@ class LiveMeasurementDialog(QDialog):
         # ======================================
 
         self.cancel_button = QPushButton(
-            "Cancel Measurement"
+            "Cancel Measurement (ESC)"
         )
 
         self.cancel_button.setObjectName("DangerButton")
@@ -551,6 +574,42 @@ class LiveMeasurementDialog(QDialog):
 
         self.value_labels[measurement_id] = value_label
 
+    def update_source_status(self, simulation):
+
+        if simulation:
+
+            self.source_indicator.setStyleSheet("""
+                font-size: 15pt;
+                color: #94A3B8;
+            """)
+
+            self.source_status_label.setText(
+                "NOT LIVE (SIMULATION)"
+            )
+
+            self.source_status_label.setStyleSheet("""
+                font-size: 10pt;
+                font-weight: bold;
+                color: #94A3B8;
+                padding: 5px 0px;
+            """)
+
+        else:
+
+            self.source_indicator.setStyleSheet("""
+                font-size: 15pt;
+                color: #EF4444;
+            """)
+
+            self.source_status_label.setText("LIVE")
+
+            self.source_status_label.setStyleSheet("""
+                font-size: 10pt;
+                font-weight: bold;
+                color: #EF4444;
+                padding: 5px 0px;
+            """)
+            
     # ==========================================
     # UPDATE LIVE MEASUREMENT
     # ==========================================
@@ -559,11 +618,14 @@ class LiveMeasurementDialog(QDialog):
         self,
         measurements,
         sample_number,
-        elapsed_s
+        elapsed_s,
+        simulation
     ):
 
         if not self.is_running:
             return
+
+        self.update_source_status(simulation)
 
         self.sample_label.setText(
             f"Samples: {sample_number}"
@@ -610,7 +672,8 @@ class LiveMeasurementDialog(QDialog):
         self.update_measurement(
             result.get("measurements", {}),
             result.get("sample_count", 0),
-            result.get("duration_s", 0)
+            result.get("duration_s", 0),
+            result.get("simulation", False)
         )
 
         self.is_running = False
@@ -636,7 +699,7 @@ class LiveMeasurementDialog(QDialog):
             f"Total Samples: {result.get('sample_count', 0)}"
         )
 
-        self.cancel_button.setText("Close")
+        self.cancel_button.setText("Close (ESC)")
 
         self.cancel_button.clicked.disconnect(
             self.cancel_measurement
@@ -674,7 +737,7 @@ class LiveMeasurementDialog(QDialog):
         self.time_label.setText(message)
         self.time_label.setWordWrap(True)
 
-        self.cancel_button.setText("Close")
+        self.cancel_button.setText("Close (ESC)")
 
         self.cancel_button.clicked.disconnect(
             self.cancel_measurement

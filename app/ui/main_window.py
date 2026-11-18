@@ -1,3 +1,4 @@
+from PySide6.QtCore import QTimer
 
 from PySide6.QtWidgets import (
     QMainWindow,
@@ -300,7 +301,10 @@ class MainWindow(QMainWindow):
                 f'{self.operator["id"]}'
             )
 
-            self.navigate(0)
+            QTimer.singleShot(
+                0,
+                self.dashboard.serial_input.setFocus
+            )
 
         elif self.operator is None:
 

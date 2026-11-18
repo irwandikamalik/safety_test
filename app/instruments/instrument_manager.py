@@ -73,6 +73,13 @@ class InstrumentManager:
                 "Instrument catalog must be an object."
             )
 
+        print("\n========== INSTRUMENT MANAGER DEBUG ==========")
+        print("MODEL INSTRUMENTS:", list(model_instruments.keys()))
+        print("CATALOG INSTRUMENTS:", list(catalog_instruments.keys()))
+        print("HARDWARE ALLOWLIST:", self.hardware_measurement_ids)
+        print("APPLICATION MODE:", self.application_mode)
+        print("==============================================\n")
+
         for instrument_id, model_config in model_instruments.items():
 
             if not isinstance(model_config, dict):
@@ -146,6 +153,11 @@ class InstrumentManager:
             )
 
             self.instruments[instrument_id] = instrument
+
+            print(
+                f"LOADED INSTRUMENT: {instrument_id} "
+                f"-> {type(instrument).__name__}"
+            )
 
     @staticmethod
     def _merge_configuration(
