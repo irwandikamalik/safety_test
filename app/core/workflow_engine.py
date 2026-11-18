@@ -255,6 +255,7 @@ class WorkflowEngine(QObject):
     # INSTRUMENT TEST EXECUTION
     # ==========================================
 
+
     def execute_instrument_test(self):
 
         parameters = self.current_configuration.get(
@@ -266,10 +267,87 @@ class WorkflowEngine(QObject):
         function = parameters.get("function")
 
         if not instrument_id or not function:
-
             raise ValueError(
                 "Instrument ID or function is missing."
             )
+
+        # --------------------------------------
+        # HARDWARE SAFETY VALIDATION
+        # --------------------------------------
+
+        if self.application_mode == "HARDWARE":
+
+            if (
+                self.parameter_configuration.get(
+                    "configuration_status"
+                ) != "APPROVED"
+                or self.parameter_configuration.get(
+                    "hardware_approved"
+                ) is not True
+            ):
+                raise RuntimeError(
+                    "Hardware test is blocked. "
+                    "Test configuration has not been approved."
+                )
+
+        # --------------------------------------
+        # LOAD MODEL TEST PARAMETERS
+        # --------------------------------------
+
+        test_parameter_groups = (
+            self.parameter_configuration.get(
+                "test_parameters",
+                {}
+            )
+        )
+
+        function_groups = {
+            "ac_withstanding": "ac_hipot",
+            "ground_bond": "ground_bond"
+        }
+
+        parameter_group = function_groups.get(function)
+
+        if parameter_group is None:
+            raise ValueError(
+                f"Unsupported instrument test function: {function}"
+            )
+
+        test_parameters = dict(
+            self.parameter_configuration.get(
+                "limits",
+                {}
+            )
+        )
+
+        configured_parameters = test_parameter_groups.get(
+            parameter_group,
+            {}
+        )
+
+        if not isinstance(configured_parameters, dict):
+            raise ValueError(
+                f"Invalid test parameter group: {parameter_group}"
+            )
+
+        test_parameters.update(configured_parameters)
+
+        # Allow explicit step-level overrides.
+        step_parameters = parameters.get(
+            "test_parameters",
+            {}
+        )
+
+        if not isinstance(step_parameters, dict):
+            raise ValueError(
+                "Step test_parameters must be an object."
+            )
+
+        test_parameters.update(step_parameters)
+
+        # --------------------------------------
+        # CONNECT AND EXECUTE
+        # --------------------------------------
 
         self.log(
             "INSTRUMENT",
@@ -290,22 +368,6 @@ class WorkflowEngine(QObject):
                     f"Could not connect instrument: {instrument_id}"
                 )
 
-            model_limits = (
-                self.parameter_configuration.get(
-                    "limits",
-                    {}
-                )
-            )
-
-            test_parameters = dict(model_limits)
-
-            test_parameters.update(
-                parameters.get(
-                    "test_parameters",
-                    {}
-                )
-            )
-
             result = self.instrument_manager.execute_test(
                 instrument_id,
                 function,
@@ -319,7 +381,21 @@ class WorkflowEngine(QObject):
                     instrument_id
                 )
 
-        # Store every measurement separately.
+        if not isinstance(result, dict):
+            raise TypeError(
+                "Instrument test result must be a dictionary."
+            )
+
+        if result.get("simulation") is not True:
+            if self.application_mode == "SIMULATION":
+                raise RuntimeError(
+                    "Simulation mode received a non-simulation result."
+                )
+
+        # --------------------------------------
+        # STORE INDIVIDUAL TEST RESULT
+        # --------------------------------------
+
         measurements = self.context.get(
             "measurements",
             {}
@@ -337,9 +413,41 @@ class WorkflowEngine(QObject):
             measurements
         )
 
+        # --------------------------------------
+        # AGGREGATE TEST JUDGMENT
+        # --------------------------------------
+
+        test_judgments = self.context.get(
+            "test_judgments",
+            {}
+        )
+
+        test_judgments[step_id] = result.get(
+            "judgment"
+        )
+
+        self.context.set(
+            "test_judgments",
+            test_judgments
+        )
+
+        judgments = list(test_judgments.values())
+
+        if "FAIL" in judgments:
+            overall_judgment = "FAIL"
+
+        elif judgments and all(
+            judgment == "PASS"
+            for judgment in judgments
+        ):
+            overall_judgment = "PASS"
+
+        else:
+            overall_judgment = None
+
         self.context.set(
             "judgment",
-            result.get("judgment")
+            overall_judgment
         )
 
         self.log(
@@ -347,9 +455,14 @@ class WorkflowEngine(QObject):
             f"{function}: {result.get('judgment')}"
         )
 
+        self.log(
+            "JUDGMENT",
+            f"Overall judgment: {overall_judgment}"
+        )
+
         return StepOutcome(
             success=True,
-            message=f"{function} measurement completed.",
+            message=f"{function} test completed.",
             interaction={
                 "type": "measurement",
                 "result": result

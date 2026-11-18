@@ -220,6 +220,106 @@ QTabBar::tab:selected {
     color: white;
 }
 
+
+/* ==========================================
+   INSTRUMENT CONFIGURATION PAGE
+========================================== */
+
+QScrollArea#InstrumentConfigurationScrollArea {
+    background-color: #F3F5F8;
+    border: none;
+}
+
+QWidget#InstrumentConfigurationContent {
+    background-color: #F3F5F8;
+}
+
+QWidget#InstrumentConfigurationContent QGroupBox {
+    background-color: white;
+    color: #263449;
+    border: 1px solid #E0E6ED;
+    border-radius: 8px;
+    margin-top: 12px;
+    padding: 12px;
+    font-weight: bold;
+}
+
+QWidget#InstrumentConfigurationContent QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    left: 12px;
+    padding: 0 5px;
+    color: #263449;
+    background-color: #F3F5F8;
+}
+
+QWidget#InstrumentConfigurationContent QLineEdit,
+QWidget#InstrumentConfigurationContent QComboBox,
+QWidget#InstrumentConfigurationContent QSpinBox {
+    background-color: white;
+    color: #263449;
+    border: 1px solid #CCD5E0;
+    border-radius: 6px;
+    padding: 7px;
+    min-height: 20px;
+}
+
+QWidget#InstrumentConfigurationContent QLineEdit:focus,
+QWidget#InstrumentConfigurationContent QComboBox:focus,
+QWidget#InstrumentConfigurationContent QSpinBox:focus {
+    border: 1px solid #287FC0;
+}
+
+QWidget#InstrumentConfigurationContent QComboBox QAbstractItemView {
+    background-color: white;
+    color: #263449;
+    selection-background-color: #1769AA;
+    selection-color: white;
+    border: 1px solid #CCD5E0;
+}
+
+QWidget#InstrumentConfigurationContent QCheckBox {
+    background-color: transparent;
+    color: #263449;
+    spacing: 8px;
+    padding: 5px;
+}
+
+QWidget#InstrumentConfigurationContent QTableWidget {
+    background-color: white;
+    alternate-background-color: #F6F8FB;
+    color: #263449;
+    border: 1px solid #E0E6ED;
+    gridline-color: #EDF0F4;
+    selection-background-color: #DCEAF7;
+    selection-color: #263449;
+}
+
+QWidget#InstrumentConfigurationContent QHeaderView::section {
+    background-color: #EDF2F7;
+    color: #263449;
+    padding: 8px;
+    border: none;
+    font-weight: bold;
+}
+
+QWidget#InstrumentConfigurationContent QTabWidget::pane {
+    background-color: white;
+    border: 1px solid #DFE5EC;
+}
+
+QWidget#InstrumentConfigurationContent QTabBar::tab {
+    background-color: #E8EDF3;
+    color: #263449;
+    padding: 9px 16px;
+}
+
+QWidget#InstrumentConfigurationContent QTabBar::tab:selected {
+    background-color: #1769AA;
+    color: white;
+}
+
+
 /* ==========================================
    STATUS BAR
 ========================================== */

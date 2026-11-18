@@ -1,3 +1,4 @@
+
 from app.instruments.base_instrument import BaseInstrument
 
 
@@ -24,10 +25,22 @@ class SimulationInstrument(BaseInstrument):
                 "Simulation instrument is not connected."
             )
 
-        if function != "ac_withstanding":
+        if not isinstance(parameters, dict):
             raise ValueError(
-                f"Unsupported simulation function: {function}"
+                "Test parameters must be a dictionary."
             )
+
+        if function == "ac_withstanding":
+            return self._simulate_ac_hipot(parameters)
+
+        if function == "ground_bond":
+            return self._simulate_ground_bond(parameters)
+
+        raise ValueError(
+            f"Unsupported simulation function: {function}"
+        )
+
+    def _simulate_ac_hipot(self, parameters):
 
         voltage = float(
             parameters.get("test_voltage_V", 1500.0)
@@ -42,17 +55,73 @@ class SimulationInstrument(BaseInstrument):
         )
 
         current_limit = float(
-            parameters.get("withstand_current_max_mA", 5.0)
+            parameters.get(
+                "current_limit_mA",
+                parameters.get(
+                    "withstand_current_max_mA",
+                    5.0
+                )
+            )
         )
+
+        if voltage <= 0 or duration <= 0 or current_limit <= 0:
+            raise ValueError(
+                "Invalid AC Hipot Test parameters."
+            )
 
         passed = measured_current <= current_limit
 
         return {
-            "function": function,
+            "function": "ac_withstanding",
             "test_voltage_V": voltage,
             "measured_current_mA": measured_current,
             "test_duration_s": duration,
             "current_limit_mA": current_limit,
+            "judgment": "PASS" if passed else "FAIL",
+            "simulation": True
+        }
+
+    def _simulate_ground_bond(self, parameters):
+
+        test_current = float(
+            parameters.get("test_current_A", 25.0)
+        )
+
+        measured_resistance = float(
+            parameters.get(
+                "simulation_resistance_mOhm",
+                80.0
+            )
+        )
+
+        duration = float(
+            parameters.get("test_duration_s", 2.0)
+        )
+
+        resistance_limit = float(
+            parameters.get(
+                "resistance_limit_mOhm",
+                100.0
+            )
+        )
+
+        if (
+            test_current <= 0
+            or duration <= 0
+            or resistance_limit <= 0
+        ):
+            raise ValueError(
+                "Invalid Ground Bond Test parameters."
+            )
+
+        passed = measured_resistance <= resistance_limit
+
+        return {
+            "function": "ground_bond",
+            "test_current_A": test_current,
+            "measured_resistance_mOhm": measured_resistance,
+            "test_duration_s": duration,
+            "resistance_limit_mOhm": resistance_limit,
             "judgment": "PASS" if passed else "FAIL",
             "simulation": True
         }

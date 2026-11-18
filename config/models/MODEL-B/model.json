@@ -1,0 +1,8 @@
+{
+    "model_id": "MODEL-B",
+    "model_name": "Product Model B",
+    "description": "AC Hipot and Ground Bond Test Product",
+    "enabled": true,
+    "version": 1,
+    "configuration_status": "DRAFT"
+}

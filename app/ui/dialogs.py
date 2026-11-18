@@ -264,14 +264,30 @@ class MeasurementDialog(QDialog):
 
         result = result or {}
 
-        self.setWindowTitle("Measurement Result")
+        function = result.get("function")
+
+        test_titles = {
+            "ac_withstanding": "AC Hipot Test",
+            "ground_bond": "Ground Bond Test"
+        }
+
+        test_title = test_titles.get(
+            function,
+            "Test Result"
+        )
+
+        self.setWindowTitle(f"{test_title} Result")
         self.setMinimumWidth(450)
 
         layout = QVBoxLayout(self)
 
-        title = QLabel("AC Withstanding Test")
+        title = QLabel(test_title)
         title.setObjectName("PageTitle")
         layout.addWidget(title)
+
+        # ======================================
+        # JUDGMENT STATUS
+        # ======================================
 
         judgment = result.get("judgment", "UNKNOWN")
 
@@ -280,9 +296,12 @@ class MeasurementDialog(QDialog):
         if judgment == "PASS":
             background = "#D8F3E7"
             foreground = "#14734F"
-        else:
+        elif judgment == "FAIL":
             background = "#FCE4E4"
             foreground = "#B93838"
+        else:
+            background = "#FFF3CD"
+            foreground = "#856404"
 
         status.setStyleSheet(
             f"""
@@ -295,52 +314,98 @@ class MeasurementDialog(QDialog):
 
         layout.addWidget(status)
 
+        # ======================================
+        # TEST MEASUREMENT RESULTS
+        # ======================================
+
         form = QFormLayout()
 
-        form.addRow(
-            "Test Voltage:",
-            QLabel(
-                f'{result.get("test_voltage_V", 0)} V'
-            )
-        )
+        if function == "ac_withstanding":
 
-        form.addRow(
-            "Measured Current:",
-            QLabel(
-                f'{result.get("measured_current_mA", 0)} mA'
+            form.addRow(
+                "Test Voltage:",
+                QLabel(
+                    f'{result.get("test_voltage_V", 0)} V'
+                )
             )
-        )
 
-        form.addRow(
-            "Test Duration:",
-            QLabel(
-                f'{result.get("test_duration_s", 0)} s'
+            form.addRow(
+                "Measured Current:",
+                QLabel(
+                    f'{result.get("measured_current_mA", 0)} mA'
+                )
             )
-        )
 
-        form.addRow(
-            "Current Limit:",
-            QLabel(
-                f'{result.get("current_limit_mA", 0)} mA'
+            form.addRow(
+                "Test Duration:",
+                QLabel(
+                    f'{result.get("test_duration_s", 0)} s'
+                )
             )
-        )
+
+            form.addRow(
+                "Current Limit:",
+                QLabel(
+                    f'{result.get("current_limit_mA", 0)} mA'
+                )
+            )
+
+        elif function == "ground_bond":
+
+            form.addRow(
+                "Test Current:",
+                QLabel(
+                    f'{result.get("test_current_A", 0)} A'
+                )
+            )
+
+            form.addRow(
+                "Measured Resistance:",
+                QLabel(
+                    f'{result.get("measured_resistance_mOhm", 0)} mΩ'
+                )
+            )
+
+            form.addRow(
+                "Test Duration:",
+                QLabel(
+                    f'{result.get("test_duration_s", 0)} s'
+                )
+            )
+
+            form.addRow(
+                "Resistance Limit:",
+                QLabel(
+                    f'{result.get("resistance_limit_mOhm", 0)} mΩ'
+                )
+            )
 
         layout.addLayout(form)
 
-        note = QLabel(
-            "SIMULATION DATA - No hardware connected."
-        )
+        # ======================================
+        # DATA SOURCE
+        # ======================================
 
+        if result.get("simulation") is True:
+            note_text = (
+                "SIMULATION DATA - No hardware connected."
+            )
+        else:
+            note_text = "HARDWARE TEST DATA."
+
+        note = QLabel(note_text)
         note.setStyleSheet("color: #738197;")
         layout.addWidget(note)
+
+        # ======================================
+        # CONTINUE BUTTON
+        # ======================================
 
         button = QPushButton("Continue")
         button.setObjectName("PrimaryButton")
         button.clicked.connect(self.accept)
 
         layout.addWidget(button)
-
-
 
 class LiveMeasurementDialog(QDialog):
 

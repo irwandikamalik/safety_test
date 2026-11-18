@@ -1,0 +1,22 @@
+{
+    "model_id": "MODEL-B",
+    "configuration_status": "DRAFT",
+    "hardware_approved": false,
+
+    "limits": {},
+
+    "test_parameters": {
+        "ac_hipot": {
+            "test_voltage_V": 1500.0,
+            "test_duration_s": 2.0,
+            "current_limit_mA": 5.0,
+            "simulation_current_mA": 0.42
+        },
+        "ground_bond": {
+            "test_current_A": 25.0,
+            "test_duration_s": 2.0,
+            "resistance_limit_mOhm": 100.0,
+            "simulation_resistance_mOhm": 80.0
+        }
+    }
+}

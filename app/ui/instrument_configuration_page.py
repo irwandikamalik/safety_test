@@ -64,6 +64,10 @@ class InstrumentConfigurationPage(QWidget):
         # SCROLL AREA
         scroll_area = QScrollArea()
 
+        scroll_area.setObjectName(
+            "InstrumentConfigurationScrollArea"
+        )
+
         scroll_area.setWidgetResizable(True)
 
         scroll_area.setFrameShape(
@@ -80,6 +84,10 @@ class InstrumentConfigurationPage(QWidget):
 
         # SCROLL CONTENT
         content_widget = QWidget()
+
+        content_widget.setObjectName(
+            "InstrumentConfigurationContent"
+        )
 
         root = QVBoxLayout(content_widget)
 
@@ -289,8 +297,6 @@ class InstrumentConfigurationPage(QWidget):
         )
 
         result_layout.addWidget(self.result_table)
-
-        root.addWidget(result_group, 2)        
 
         # ADVANCED JSON EDITOR
 

@@ -15,7 +15,8 @@
                 "identify": "*IDN?"
             },
             "supported_functions": [
-                "ac_withstanding"
+                "ac_withstanding",
+                "ground_bond"
             ]
         },
         "yokogawa_wt310e": {
