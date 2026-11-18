@@ -29,22 +29,35 @@ from PySide6.QtWidgets import (
 from app.services.config_service import ConfigService
 from app.instruments.simulation_instrument import SimulationInstrument
 from app.instruments.driver_registry import DriverRegistry
+from app.services.model_service import ModelService
 
 
 class InstrumentConfigurationPage(QWidget):
 
     CATALOG_PATH = "global/instrument_catalog.json"
-    MODEL_PATH = "models/MODEL-A/instruments.json"
+
+    def model_configuration_path(self):
+
+        if not self.current_model_id:
+            raise ValueError("No model selected.")
+
+        return (
+            f"models/{self.current_model_id}/instruments.json"
+        )
 
     def __init__(self, parent=None):
 
         super().__init__(parent)
 
         self.service = ConfigService()
+        self.model_service = ModelService()
         self.driver_registry = DriverRegistry()
 
         self.measurement_checks = {}
         self.current_instrument_id = None
+        self.current_model_id = None
+        self.loading_configuration = False
+        self.form_dirty = False
 
         self.build_ui()
         self.load_configuration()
@@ -107,6 +120,28 @@ class InstrumentConfigurationPage(QWidget):
         root.addWidget(heading)
         root.addWidget(subtitle)
 
+
+        # MODEL SELECTOR
+
+        model_selector_group = QGroupBox("Model Selection")
+        model_selector_layout = QFormLayout(
+            model_selector_group
+        )
+
+        self.model_selector = QComboBox()
+
+        self.model_selector.currentIndexChanged.connect(
+            self.on_model_changed
+        )
+
+        model_selector_layout.addRow(
+            "Available Model:",
+            self.model_selector
+        )
+
+        root.addWidget(model_selector_group)
+
+
         # INSTRUMENT SELECTOR
 
         selector_group = QGroupBox("Instrument Selection")
@@ -164,6 +199,27 @@ class InstrumentConfigurationPage(QWidget):
         self.timeout_input.setValue(5000)
         self.timeout_input.setSuffix(" ms")
 
+        # Track unsaved connection changes.
+        self.interface_input.currentTextChanged.connect(
+            self.mark_form_dirty
+        )
+
+        self.resource_input.textChanged.connect(
+            self.mark_form_dirty
+        )
+
+        self.port_input.textChanged.connect(
+            self.mark_form_dirty
+        )
+
+        self.baudrate_input.valueChanged.connect(
+            self.mark_form_dirty
+        )
+
+        self.timeout_input.valueChanged.connect(
+            self.mark_form_dirty
+        )
+
         connection_layout.addRow(
             "Interface:",
             self.interface_input
@@ -194,7 +250,7 @@ class InstrumentConfigurationPage(QWidget):
         # MODEL-SPECIFIC CONFIGURATION
 
         self.model_group = QGroupBox(
-            "MODEL-A Measurement Configuration"
+            "Model Measurement Configuration"
         )
 
         model_layout = QVBoxLayout(self.model_group)
@@ -202,6 +258,9 @@ class InstrumentConfigurationPage(QWidget):
         self.element_input = QSpinBox()
         self.element_input.setRange(1, 3)
         self.element_input.setValue(1)
+        self.element_input.valueChanged.connect(
+            self.mark_form_dirty
+        )
 
         element_layout = QFormLayout()
 
@@ -328,7 +387,7 @@ class InstrumentConfigurationPage(QWidget):
 
         self.json_tabs.addTab(
             self.model_editor,
-            "MODEL-A Mapping"
+            "Model Mapping"
         )
 
         json_layout.addWidget(self.json_tabs)
@@ -386,6 +445,258 @@ class InstrumentConfigurationPage(QWidget):
         self.baudrate_input.setEnabled(is_serial)
 
         self.resource_input.setEnabled(not is_serial)
+
+
+    # ==========================================
+    # MODEL SELECTION
+    # ==========================================
+
+    def load_model_list(self):
+
+        models = self.model_service.discover_models()
+
+        self.model_selector.blockSignals(True)
+        self.model_selector.clear()
+
+        for model in models:
+
+            model_id = model["model_id"]
+            model_name = model["model_name"]
+
+            self.model_selector.addItem(
+                f"{model_id} - {model_name}",
+                model_id
+            )
+
+        if models:
+            self.model_selector.setCurrentIndex(0)
+
+        self.model_selector.blockSignals(False)
+
+        if not models:
+
+            self.current_model_id = None
+
+            QMessageBox.warning(
+                self,
+                "No Models Found",
+                "No model configuration was found."
+            )
+
+            return
+
+        self.current_model_id = (
+            self.model_selector.currentData()
+        )
+
+    def refresh_model_list(self):
+
+        models = self.model_service.discover_models()
+
+        previous_model_id = self.current_model_id
+
+        self.model_selector.blockSignals(True)
+        self.model_selector.clear()
+
+        for model in models:
+
+            model_id = model["model_id"]
+            model_name = model["model_name"]
+
+            self.model_selector.addItem(
+                f"{model_id} - {model_name}",
+                model_id
+            )
+
+        if not models:
+
+            self.model_selector.blockSignals(False)
+
+            QMessageBox.warning(
+                self,
+                "No Models Found",
+                "No model configuration was found."
+            )
+
+            return
+
+        # Pertahankan model yang sebelumnya dipilih.
+        selected_index = self.model_selector.findData(
+            previous_model_id
+        )
+
+        if selected_index < 0:
+            selected_index = 0
+
+        self.model_selector.setCurrentIndex(selected_index)
+        self.model_selector.blockSignals(False)
+
+        selected_model_id = self.model_selector.currentData()
+
+        # Model yang aktif tidak berubah.
+        # Tidak perlu memuat ulang editor.
+        if selected_model_id == previous_model_id:
+            return
+
+        # Model sebelumnya sudah tidak tersedia.
+        if not self.confirm_model_switch():
+
+            self.model_selector.blockSignals(True)
+
+            previous_index = self.model_selector.findData(
+                previous_model_id
+            )
+
+            if previous_index >= 0:
+                self.model_selector.setCurrentIndex(
+                    previous_index
+                )
+
+            self.model_selector.blockSignals(False)
+
+            return
+
+        self.current_model_id = selected_model_id
+
+        self.load_model_configuration()
+
+    def on_model_changed(self, index):
+
+        if index < 0:
+            return
+
+        new_model_id = self.model_selector.currentData()
+
+        if new_model_id == self.current_model_id:
+            return
+
+        if not self.confirm_model_switch():
+
+            self.model_selector.blockSignals(True)
+
+            previous_index = self.model_selector.findData(
+                self.current_model_id
+            )
+
+            self.model_selector.setCurrentIndex(
+                previous_index
+            )
+
+            self.model_selector.blockSignals(False)
+
+            return
+
+        self.current_model_id = new_model_id
+
+        self.load_model_configuration()
+
+    def confirm_model_switch(self):
+
+        catalog_modified = (
+            self.catalog_editor.document().isModified()
+        )
+
+        model_modified = (
+            self.model_editor.document().isModified()
+        )
+
+        has_unsaved_changes = (
+            catalog_modified
+            or model_modified
+            or self.form_dirty
+        )
+
+        if not has_unsaved_changes:
+            return True
+
+        answer = QMessageBox.question(
+            self,
+            "Unsaved Changes",
+            "There are unsaved configuration changes.\n\n"
+            "Do you want to save before switching models?",
+            QMessageBox.Save
+            | QMessageBox.Discard
+            | QMessageBox.Cancel,
+            QMessageBox.Save
+        )
+
+        if answer == QMessageBox.Save:
+
+            return self.save_settings(
+                show_message=False
+            )
+
+        if answer == QMessageBox.Discard:
+            return True
+
+        return False
+    
+    def save_json_before_switch(self):
+
+        catalog_modified = (
+            self.catalog_editor.document().isModified()
+        )
+
+        model_modified = (
+            self.model_editor.document().isModified()
+        )
+
+        if catalog_modified:
+
+            if not self.save_editor(
+                self.catalog_editor,
+                self.CATALOG_PATH
+            ):
+                return False
+
+        if model_modified:
+
+            if not self.save_editor(
+                self.model_editor,
+                self.model_configuration_path()
+            ):
+                return False
+
+        return True
+
+    def load_model_configuration(self):
+
+        try:
+
+            path = self.model_configuration_path()
+
+            self.loading_configuration = True
+
+            self.model_editor.setPlainText(
+                self.service.read_config(path)
+            )
+
+            self.model_editor.document().setModified(False)
+
+            self.json_tabs.setTabText(
+                1,
+                f"{self.current_model_id} Mapping"
+            )
+
+            self.model_group.setTitle(
+                f"{self.current_model_id} Measurement Configuration"
+            )
+
+            self.refresh_instrument_list()
+            self.form_dirty = False
+
+            self.loading_configuration = False
+
+        except Exception as error:
+
+            self.loading_configuration = False
+
+            QMessageBox.critical(
+                self,
+                "Model Configuration Error",
+                str(error)
+            )
+
 
     # ==========================================
     # JSON CONFIGURATION
@@ -447,9 +758,12 @@ class InstrumentConfigurationPage(QWidget):
 
         return None, None
 
+
     def load_configuration(self):
 
         try:
+
+            self.loading_configuration = True
 
             self.catalog_editor.setPlainText(
                 self.service.read_config(
@@ -457,15 +771,18 @@ class InstrumentConfigurationPage(QWidget):
                 )
             )
 
-            self.model_editor.setPlainText(
-                self.service.read_config(
-                    self.MODEL_PATH
-                )
-            )
+            self.catalog_editor.document().setModified(False)
 
-            self.refresh_instrument_list()
+            self.loading_configuration = False
+
+            self.load_model_list()
+
+            if self.current_model_id:
+                self.load_model_configuration()
 
         except Exception as error:
+
+            self.loading_configuration = False
 
             QMessageBox.critical(
                 self,
@@ -542,12 +859,18 @@ class InstrumentConfigurationPage(QWidget):
 
             self.current_instrument_id = catalog_id
 
+            self.loading_configuration = True
+
             self.refresh_connection_controls(catalog)
 
             self.refresh_measurement_controls(
                 catalog_id,
                 catalog
             )
+
+            self.loading_configuration = False
+
+            self.form_dirty = False
 
             self.result_table.setRowCount(0)
 
@@ -614,6 +937,11 @@ class InstrumentConfigurationPage(QWidget):
         self.baudrate_input.setEnabled(is_serial)
         self.resource_input.setEnabled(not is_serial)
 
+    def mark_form_dirty(self, *args):
+
+        if not self.loading_configuration:
+            self.form_dirty = True
+
     # ==========================================
     # MODEL MEASUREMENT SETTINGS
     # ==========================================
@@ -655,7 +983,7 @@ class InstrumentConfigurationPage(QWidget):
             self.measurement_container.addWidget(
                 QLabel(
                     "This instrument is not enabled "
-                    "for MODEL-A."
+                    f"for {self.current_model_id}."
                 )
             )
 
@@ -707,6 +1035,10 @@ class InstrumentConfigurationPage(QWidget):
 
             checkbox.setChecked(
                 measurement_id in selected
+            )
+
+            checkbox.toggled.connect(
+                self.mark_form_dirty
             )
 
             self.measurement_container.addWidget(
@@ -794,7 +1126,8 @@ class InstrumentConfigurationPage(QWidget):
 
         if model_entry is None:
             raise ValueError(
-                f"Instrument {catalog_id} is not mapped to MODEL-A."
+                f"Instrument {catalog_id} is not mapped to "
+                f"{self.current_model_id}."
             )
 
         catalog_data = self.get_catalog_data()
@@ -864,7 +1197,7 @@ class InstrumentConfigurationPage(QWidget):
 
             # Persist model-specific configuration.
             self.service.save_config(
-                self.MODEL_PATH,
+                self.model_configuration_path(),
                 model_text
             )
 
@@ -875,6 +1208,11 @@ class InstrumentConfigurationPage(QWidget):
             self.model_editor.setPlainText(
                 model_text
             )
+
+            self.catalog_editor.document().setModified(False)
+            self.model_editor.document().setModified(False)
+
+            self.form_dirty = False
 
             if show_message:
 
@@ -1179,9 +1517,16 @@ class InstrumentConfigurationPage(QWidget):
     def current_editor(self):
 
         if self.json_tabs.currentIndex() == 0:
-            return self.catalog_editor, self.CATALOG_PATH
 
-        return self.model_editor, self.MODEL_PATH
+            return (
+                self.catalog_editor,
+                self.CATALOG_PATH
+            )
+
+        return (
+            self.model_editor,
+            self.model_configuration_path()
+        )
 
     def format_json(self):
 
@@ -1233,9 +1578,8 @@ class InstrumentConfigurationPage(QWidget):
                 message
             )
 
-    def save_json(self):
 
-        editor, path = self.current_editor()
+    def save_editor(self, editor, path):
 
         valid, message = self.service.validate_json(
             editor.toPlainText()
@@ -1249,32 +1593,37 @@ class InstrumentConfigurationPage(QWidget):
                 message
             )
 
-            return
+            return False
 
         try:
 
-            # Validate the expected top-level structure.
             parsed = json.loads(
                 editor.toPlainText()
             )
 
-            if not isinstance(parsed.get("instruments"), dict):
+            if not isinstance(parsed, dict):
                 raise ValueError(
-                    "JSON must contain an 'instruments' object."
+                    "JSON root must be an object."
                 )
+
+            if path != self.CATALOG_PATH:
+
+                if not isinstance(
+                    parsed.get("instruments"),
+                    dict
+                ):
+                    raise ValueError(
+                        "JSON must contain an 'instruments' object."
+                    )
 
             self.service.save_config(
                 path,
                 editor.toPlainText()
             )
 
-            self.load_configuration()
+            editor.document().setModified(False)
 
-            QMessageBox.information(
-                self,
-                "JSON Saved",
-                f"Saved successfully:\n{path}"
-            )
+            return True
 
         except Exception as error:
 
@@ -1283,3 +1632,26 @@ class InstrumentConfigurationPage(QWidget):
                 "Save Error",
                 str(error)
             )
+
+            return False
+
+
+    def save_json(self):
+
+        editor, path = self.current_editor()
+
+        if self.save_editor(editor, path):
+
+            QMessageBox.information(
+                self,
+                "JSON Saved",
+                f"Saved successfully:\n{path}"
+            )
+
+            if editor == self.catalog_editor:
+
+                self.refresh_instrument_list()
+
+            else:
+
+                self.refresh_instrument_list()

@@ -1,3 +1,6 @@
+import shutil
+
+from datetime import datetime
 
 import json
 import re
@@ -6,6 +9,12 @@ from pathlib import Path
 
 
 class ModelService:
+
+    MODEL_METADATA_FIELDS = (
+        "model_name",
+        "description",
+        "enabled",
+    )
 
     REQUIRED_FILES = (
         "model.json",
@@ -32,6 +41,10 @@ class ModelService:
 
         self.models_root = (
             self.config_root / "models"
+        )
+
+        self.backup_root = (
+            self.config_root / "backups" / "models"
         )
 
     # --------------------------------------------------
@@ -265,16 +278,25 @@ class ModelService:
 
                 self.get_model_directory(model_id)
 
-                model_file = (
-                    directory / "model.json"
-                )
+                model_file = directory / "model.json"
 
                 if not model_file.is_file():
                     continue
 
-                model_config = self.read_json(
-                    model_file
-                )
+                model_config = self.read_json(model_file)
+
+                if not isinstance(model_config, dict):
+                    continue
+
+                parameters_path = directory / "parameters.json"
+
+                parameters = {}
+
+                if parameters_path.is_file():
+                    parameters = self.read_json(parameters_path)
+
+                    if not isinstance(parameters, dict):
+                        parameters = {}
 
                 models.append({
                     "model_id": model_config.get(
@@ -285,10 +307,25 @@ class ModelService:
                         "model_name",
                         model_id
                     ),
+                    "description": model_config.get(
+                        "description",
+                        ""
+                    ),
                     "enabled": model_config.get(
                         "enabled",
                         False
                     ),
+                    "configuration_status": model_config.get(
+                        "configuration_status",
+                        parameters.get(
+                            "configuration_status",
+                            "NOT SET"
+                        )
+                    ),
+                    "hardware_approved": parameters.get(
+                        "hardware_approved",
+                        False
+                    )
                 })
 
             except (
@@ -299,6 +336,386 @@ class ModelService:
                 continue
 
         return models
+
+    # --------------------------------------------------
+    # MODEL BACKUP
+    # --------------------------------------------------
+
+    def backup_model(self, model_id):
+
+        source = self.get_model_directory(
+            model_id
+        )
+
+        if not source.is_dir():
+
+            raise FileNotFoundError(
+                f"Model not found: {model_id}"
+            )
+
+        timestamp = datetime.now().strftime(
+            "%Y%m%d_%H%M%S_%f"
+        )
+
+        backup_directory = (
+            self.backup_root
+            / f"{model_id}_{timestamp}"
+        )
+
+        backup_directory.parent.mkdir(
+            parents=True,
+            exist_ok=True
+        )
+
+        shutil.copytree(
+            source,
+            backup_directory
+        )
+
+        return backup_directory
+
+    # --------------------------------------------------
+    # MODEL METADATA VALIDATION
+    # --------------------------------------------------
+
+    def validate_model_metadata(
+        self,
+        model_name,
+        description,
+        enabled
+    ):
+
+        errors = []
+
+        if (
+            not isinstance(model_name, str)
+            or not model_name.strip()
+        ):
+
+            errors.append(
+                "Model Name is required."
+            )
+
+        if not isinstance(description, str):
+
+            errors.append(
+                "Description must be a string."
+            )
+
+        if not isinstance(enabled, bool):
+
+            errors.append(
+                "Enabled must be a boolean."
+            )
+
+        return errors
+
+    # --------------------------------------------------
+    # CREATE MODEL
+    # --------------------------------------------------
+
+    def create_model(
+        self,
+        model_id,
+        model_name,
+        description="",
+        template_model_id="MODEL-A"
+    ):
+
+        if not isinstance(model_id, str):
+
+            raise ValueError(
+                "Model ID must be a string."
+            )
+
+        model_id = model_id.strip().upper()
+
+        target_directory = self.get_model_directory(
+            model_id
+        )
+
+        errors = self.validate_model_metadata(
+            model_name,
+            description,
+            True
+        )
+
+        if errors:
+
+            raise ValueError(
+                "\n".join(errors)
+            )
+
+        if target_directory.exists():
+
+            raise FileExistsError(
+                f"Model already exists: {model_id}"
+            )
+
+        if model_id == template_model_id:
+
+            raise ValueError(
+                "New Model ID cannot be the template Model ID."
+            )
+
+        template_directory = self.get_model_directory(
+            template_model_id
+        )
+
+        if not template_directory.is_dir():
+
+            raise FileNotFoundError(
+                f"Template model not found: {template_model_id}"
+            )
+
+        # Verify all required files before copying.
+        for filename in self.REQUIRED_FILES:
+
+            file_path = (
+                template_directory / filename
+            )
+
+            if not file_path.is_file():
+
+                raise FileNotFoundError(
+                    f"Template is missing {filename}."
+                )
+
+            content = self.read_json(file_path)
+
+            if not isinstance(content, dict):
+
+                raise ValueError(
+                    f"Template {filename} must contain a JSON object."
+                )
+
+        target_directory.parent.mkdir(
+            parents=True,
+            exist_ok=True
+        )
+
+        try:
+
+            shutil.copytree(
+                template_directory,
+                target_directory
+            )
+
+            model_config = self.read_json(
+                target_directory / "model.json"
+            )
+
+            model_config.update({
+                "model_id": model_id,
+                "model_name": model_name.strip(),
+                "description": description.strip(),
+                "enabled": True,
+                "version": 1
+            })
+
+            # New model starts as a draft.
+            model_config["configuration_status"] = "DRAFT"
+
+            self.write_model_json(
+                target_directory / "model.json",
+                model_config
+            )
+
+            parameters_path = (
+                target_directory / "parameters.json"
+            )
+
+            parameters = self.read_json(
+                parameters_path
+            )
+
+            parameters["model_id"] = model_id
+
+            # New model must always start as DRAFT.
+            parameters["configuration_status"] = "DRAFT"
+            parameters["hardware_approved"] = False
+
+            self.write_model_json(
+                parameters_path,
+                parameters
+            )
+
+            return model_id
+
+        except Exception:
+
+            if target_directory.exists():
+
+                shutil.rmtree(
+                    target_directory
+                )
+
+            raise
+
+    # --------------------------------------------------
+    # MODEL JSON WRITER
+    # --------------------------------------------------
+
+    def write_model_json(self, path, data):
+
+        path = Path(path)
+
+        temporary_path = path.with_name(
+            f"{path.name}.tmp"
+        )
+
+        try:
+
+            temporary_path.write_text(
+                json.dumps(
+                    data,
+                    indent=4,
+                    ensure_ascii=False
+                ),
+                encoding="utf-8"
+            )
+
+            temporary_path.replace(path)
+
+        except Exception:
+
+            if temporary_path.exists():
+                temporary_path.unlink()
+
+            raise
+
+    # --------------------------------------------------
+    # UPDATE MODEL METADATA
+    # --------------------------------------------------
+
+    def update_model(
+        self,
+        model_id,
+        model_name,
+        description,
+        enabled
+    ):
+
+        errors = self.validate_model_metadata(
+            model_name,
+            description,
+            enabled
+        )
+
+        if errors:
+
+            raise ValueError(
+                "\n".join(errors)
+            )
+
+        model_directory = self.get_model_directory(
+            model_id
+        )
+
+        model_file = (
+            model_directory / "model.json"
+        )
+
+        if not model_file.is_file():
+
+            raise FileNotFoundError(
+                f"Model not found: {model_id}"
+            )
+
+        model_config = self.read_json(
+            model_file
+        )
+
+        if model_config.get("model_id") != model_id:
+
+            raise ValueError(
+                "Model ID does not match its directory."
+            )
+
+        self.backup_model(model_id)
+
+        model_config.update({
+            "model_name": model_name.strip(),
+            "description": description.strip(),
+            "enabled": enabled
+        })
+
+        self.write_model_json(
+            model_file,
+            model_config
+        )
+
+    # --------------------------------------------------
+    # SERIAL MAPPING DEPENDENCY
+    # --------------------------------------------------
+
+    def get_model_mapping_references(self, model_id):
+
+        rules = self.load_serial_model_mapping()
+
+        references = []
+
+        for rule in rules:
+
+            if not isinstance(rule, dict):
+
+                raise ValueError(
+                    "Invalid serial mapping rule."
+                )
+
+            if rule.get("model_id") == model_id:
+
+                references.append(
+                    rule.get("rule_id", "Unknown rule")
+                )
+
+        return references
+
+    # --------------------------------------------------
+    # DELETE MODEL
+    # --------------------------------------------------
+
+    def delete_model(self, model_id):
+
+        model_directory = self.get_model_directory(
+            model_id
+        )
+
+        if not model_directory.is_dir():
+
+            raise FileNotFoundError(
+                f"Model not found: {model_id}"
+            )
+
+        references = self.get_model_mapping_references(
+            model_id
+        )
+
+        if references:
+
+            raise ValueError(
+                "Cannot delete model because it is used "
+                "by Serial Mapping:\n"
+                + ", ".join(references)
+            )
+
+        backup_directory = self.backup_model(
+            model_id
+        )
+
+        try:
+
+            shutil.rmtree(
+                model_directory
+            )
+
+        except Exception:
+
+            raise RuntimeError(
+                "Model deletion failed. "
+                f"Backup is available at: {backup_directory}"
+            )
+
 
     # --------------------------------------------------
     # LOAD MODEL CONFIGURATION

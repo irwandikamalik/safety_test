@@ -1,0 +1,54 @@
+
+{
+    "sequence_id": "test_sequence",
+    "name": "Test Sequence",
+    "version": 1,
+    "steps": [
+        {
+            "id": "step_001",
+            "type": "validate_serial",
+            "name": "Validate Serial Number",
+            "enabled": true,
+            "parameters": {
+                "source": "serial_number",
+                "min_length": 1,
+                "max_length": 50
+            }
+        },
+        {
+            "id": "step_002",
+            "type": "input",
+            "name": "Scan Door Top",
+            "enabled": true,
+            "parameters": {
+                "field": "door_top",
+                "label": "Door Top Barcode",
+                "placeholder": "Scan Door Top Barcode",
+                "required": true
+            }
+        },
+        {
+            "id": "step_003",
+            "type": "input",
+            "name": "Scan Door Bottom",
+            "enabled": true,
+            "parameters": {
+                "field": "door_bottom",
+                "label": "Door Bottom Barcode",
+                "placeholder": "Scan Door Bottom Barcode",
+                "required": true
+            }
+        },
+        {
+            "id": "step_004",
+            "type": "instrument_measurement",
+            "name": "WT310E Live Measurement",
+            "enabled": true,
+            "parameters": {
+                "instrument": "wt310e",
+                "duration_s": 10,
+                "sample_interval_s": 1
+            }
+        }
+    ]
+}

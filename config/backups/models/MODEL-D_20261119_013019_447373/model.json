@@ -1,0 +1,8 @@
+{
+    "model_id": "MODEL-D",
+    "model_name": "Model-D",
+    "description": "Model-D",
+    "enabled": true,
+    "version": 1,
+    "configuration_status": "DRAFT"
+}

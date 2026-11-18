@@ -1,0 +1,7 @@
+{
+    "model_id": "MODEL-A",
+    "model_name": "Product Model A",
+    "description": "AC Safety Test Product",
+    "enabled": false,
+    "version": 1
+}

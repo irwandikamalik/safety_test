@@ -1,5 +1,77 @@
 
 APP_STYLE = """
+
+
+/* ==========================================
+   SEQUENCE CONFIGURATION
+========================================== */
+
+QGroupBox#SequenceModelGroup {
+    background-color: white;
+    color: #263449;
+    border: 1px solid #E0E6ED;
+    border-radius: 8px;
+    margin-top: 12px;
+    padding: 12px;
+    font-weight: bold;
+}
+
+QGroupBox#SequenceModelGroup::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    left: 12px;
+    padding: 0 5px;
+    color: #263449;
+    background-color: #F3F5F8;
+}
+
+QComboBox#SequenceModelSelector {
+    background-color: white;
+    color: #263449;
+    border: 1px solid #CCD5E0;
+    border-radius: 6px;
+    padding: 7px 10px;
+    min-height: 22px;
+}
+
+QComboBox#SequenceModelSelector:hover {
+    border: 1px solid #AABBCD;
+}
+
+QComboBox#SequenceModelSelector:focus {
+    border: 1px solid #287FC0;
+}
+
+QComboBox#SequenceModelSelector::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 30px;
+    border-left: 1px solid #CCD5E0;
+    background-color: #F6F8FB;
+    border-top-right-radius: 6px;
+    border-bottom-right-radius: 6px;
+}
+
+QComboBox#SequenceModelSelector QAbstractItemView {
+    background-color: white;
+    color: #263449;
+    border: 1px solid #CCD5E0;
+    selection-background-color: #1769AA;
+    selection-color: white;
+    outline: none;
+    padding: 4px;
+}
+
+QComboBox#SequenceModelSelector QAbstractItemView::item {
+    min-height: 30px;
+    padding: 5px 8px;
+}
+
+QComboBox#SequenceModelSelector QAbstractItemView::item:hover {
+    background-color: #E8EDF3;
+    color: #263449;
+}
+
 /* ==========================================
    GLOBAL
 ========================================== */
@@ -319,6 +391,45 @@ QWidget#InstrumentConfigurationContent QTabBar::tab:selected {
     color: white;
 }
 
+/* ==========================================
+   MODEL MANAGEMENT
+========================================== */
+
+QDialog QTextEdit#ModelDescriptionInput {
+    background-color: white;
+    color: #263449;
+    border: 1px solid #CCD5E0;
+    border-radius: 6px;
+    padding: 9px;
+    font-family: "Segoe UI";
+    font-size: 10pt;
+}
+
+QDialog QTextEdit#ModelDescriptionInput:focus {
+    border: 1px solid #287FC0;
+}
+
+QDialog QComboBox#ModelTemplateSelector {
+    background-color: white;
+    color: #263449;
+    border: 1px solid #CCD5E0;
+    border-radius: 6px;
+    padding: 7px;
+    min-height: 20px;
+}
+
+QDialog QComboBox#ModelTemplateSelector:focus {
+    border: 1px solid #287FC0;
+}
+
+QDialog QComboBox#ModelTemplateSelector QAbstractItemView {
+    background-color: white;
+    color: #263449;
+    selection-background-color: #1769AA;
+    selection-color: white;
+    border: 1px solid #CCD5E0;
+    outline: none;
+}
 
 /* ==========================================
    STATUS BAR

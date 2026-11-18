@@ -22,6 +22,7 @@ from app.ui.configuration_page import ConfigurationPage
 from app.ui.dialogs import OperatorDialog
 from app.ui.history_page import HistoryPage
 from app.ui.instrument_configuration_page import InstrumentConfigurationPage
+from app.ui.model_management_page import ModelManagementPage
 
 
 class MainWindow(QMainWindow):
@@ -98,19 +99,24 @@ class MainWindow(QMainWindow):
         side_layout.addWidget(caption)
 
         self.create_nav_button(
-            "Model Configuration", 2, side_layout, "model-configuration.svg"
+            "Model Management", 2, side_layout,
+            "model-management.svg"
         )
 
         self.create_nav_button(
-            "Serial Mapping", 3, side_layout, "serial-mapping.svg"
+            "Model Configuration", 3, side_layout, "model-configuration.svg"
         )
 
         self.create_nav_button(
-            "Sequence JSON", 4, side_layout, "workflow-editor.svg"
+            "Serial Mapping", 4, side_layout, "serial-mapping.svg"
         )
 
         self.create_nav_button(
-            "Instrument Configuration", 5, side_layout,
+            "Sequence JSON", 5, side_layout, "workflow-editor.svg"
+        )
+
+        self.create_nav_button(
+            "Instrument Configuration", 6, side_layout,
             "instrument-configuration.svg"
         )
 
@@ -182,9 +188,11 @@ class MainWindow(QMainWindow):
         self.stack = QStackedWidget()
 
         self.dashboard = DashboardPage()
-
         self.history_page = HistoryPage()
 
+        self.model_management_page = ModelManagementPage()
+
+        self.model_management_page.dashboard = self.dashboard
 
         # ==========================================
         # CONFIGURATION PAGES
@@ -216,12 +224,8 @@ class MainWindow(QMainWindow):
 
         self.sequence_page = ConfigurationPage(
             "Sequence Configuration",
-            [
-                (
-                    "MODEL-A",
-                    "models/MODEL-A/sequence.json"
-                )
-            ]
+            [],
+            dynamic_model=True
         )
 
         self.instrument_page = InstrumentConfigurationPage()
@@ -229,6 +233,7 @@ class MainWindow(QMainWindow):
         pages = [
             self.dashboard,
             self.history_page,
+            self.model_management_page,
             self.model_page,
             self.mapping_page,
             self.sequence_page,
@@ -297,9 +302,19 @@ class MainWindow(QMainWindow):
         if index == 1:
             self.history_page.refresh_history()
 
+        if index == 2:
+            self.model_management_page.refresh_models()
+
+        if index == 5:
+            self.sequence_page.refresh_model_list()
+
+        if index == 6:
+            self.instrument_page.refresh_model_list()
+
         titles = [
             "Test Execution",
             "Test History",
+            "Model Management",
             "Model Configuration",
             "Serial Mapping Configuration",
             "Sequence Configuration",

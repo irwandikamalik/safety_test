@@ -1,0 +1,38 @@
+{
+    "sequence_id": "model_b_test_sequence",
+    "name": "Model B Safety Test Sequence",
+    "version": 1,
+    "steps": [
+        {
+            "id": "step_001",
+            "type": "validate_serial",
+            "name": "Validate Serial Number",
+            "enabled": true,
+            "parameters": {
+                "source": "serial_number",
+                "min_length": 1,
+                "max_length": 50
+            }
+        },
+        {
+            "id": "step_002",
+            "type": "instrument_test",
+            "name": "AC Hipot Test",
+            "enabled": true,
+            "parameters": {
+                "instrument": "kikusui_tos9302",
+                "function": "ac_withstanding"
+            }
+        },
+        {
+            "id": "step_003",
+            "type": "instrument_test",
+            "name": "Ground Bond Test",
+            "enabled": true,
+            "parameters": {
+                "instrument": "kikusui_tos9302",
+                "function": "ground_bond"
+            }
+        }
+    ]
+}
