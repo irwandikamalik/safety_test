@@ -17,7 +17,8 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QSplitter,
     QMessageBox,
-    QComboBox
+    QComboBox,
+    QLineEdit
 )
 
 from app.services.config_service import ConfigService
@@ -27,7 +28,8 @@ from app.services.model_service import ModelService
 from app.ui.dialogs import (
     InputDialog,
     ApprovalDialog,
-    MeasurementDialog
+    MeasurementDialog,
+    LiveMeasurementDialog
 )
 
 
@@ -60,9 +62,7 @@ class DashboardPage(QWidget):
         self.service = ConfigService()
         self.model_service = ModelService()
 
-        self.selected_model_id = None
-        self.model_configuration = None
-        self.model_validation = None
+
 
         self.build_ui()
 
@@ -81,34 +81,36 @@ class DashboardPage(QWidget):
         subtitle.setObjectName("Muted")
         root.addWidget(subtitle)
 
+
         # ==========================================
-        # MODEL SELECTOR
+        # SERIAL NUMBER / AUTOMATIC MODEL DETECTION
         # ==========================================
 
         model_frame, model_layout = create_panel(
-            "Product Model Selection"
+            "Product Identification"
         )
 
-        model_row = QHBoxLayout()
+        serial_row = QHBoxLayout()
 
-        self.model_combo = QComboBox()
-        self.model_combo.setMinimumHeight(36)
-
-        self.refresh_model_button = QPushButton(
-            "Refresh Models"
+        self.serial_input = QLineEdit()
+        self.serial_input.setPlaceholderText(
+            "Scan or enter product serial number"
         )
+        self.serial_input.setMinimumHeight(38)
 
-        self.refresh_model_button.setMinimumHeight(36)
+        self.detect_model_button = QPushButton(
+            "Detect Model"
+        )
+        self.detect_model_button.setMinimumHeight(38)
 
-        model_row.addWidget(self.model_combo, 1)
-        model_row.addWidget(self.refresh_model_button)
+        serial_row.addWidget(self.serial_input, 1)
+        serial_row.addWidget(self.detect_model_button)
 
-        model_layout.addLayout(model_row)
+        model_layout.addLayout(serial_row)
 
         self.model_status_label = QLabel(
-            "No model selected."
+            "Enter serial number to detect product model."
         )
-
         self.model_status_label.setWordWrap(True)
 
         model_layout.addWidget(
@@ -117,15 +119,28 @@ class DashboardPage(QWidget):
 
         root.addWidget(model_frame)
 
-        self.model_combo.currentIndexChanged.connect(
-            self.on_model_changed
+        self.detect_model_button.clicked.connect(
+            self.detect_model
         )
 
-        self.refresh_model_button.clicked.connect(
-            self.refresh_models
+        self.serial_input.returnPressed.connect(
+            self.detect_model
         )
 
-        self.refresh_models()
+        self.serial_input.textChanged.connect(
+            self.on_serial_number_changed
+        )
+
+        # ==========================================
+        # MODEL STATE
+        # ==========================================
+
+        self.selected_model_id = None
+        self.model_configuration = None
+        self.model_validation = None
+        self.serial_mapping_result = None
+        self.detected_serial_number = None
+
 
         top_layout = QHBoxLayout()
 
@@ -208,6 +223,7 @@ class DashboardPage(QWidget):
         )
 
         self.start_button.setObjectName("PrimaryButton")
+        self.start_button.setEnabled(False)
         self.start_button.clicked.connect(
             self.start_sequence
         )
@@ -268,52 +284,170 @@ class DashboardPage(QWidget):
 
         root.addWidget(splitter, 1)
 
-    def refresh_models(self):
+
+    # ==========================================
+    # SERIAL NUMBER MODEL DETECTION
+    # ==========================================
+
+    def on_serial_number_changed(self, value):
 
         if self.engine and self.engine.is_running:
             return
 
-        self.model_combo.blockSignals(True)
-        self.model_combo.clear()
-
         self.selected_model_id = None
         self.model_configuration = None
         self.model_validation = None
+        self.serial_mapping_result = None
+        self.detected_serial_number = None
+
+        self.model_status_label.setStyleSheet("")
+        self.model_status_label.setText(
+            "Serial number changed. Detect model again."
+        )
+
+        if hasattr(self, "start_button"):
+            self.start_button.setEnabled(False)
+
+    def detect_model(self):
+
+        if self.engine and self.engine.is_running:
+            return
+
+        serial_number = self.serial_input.text().strip()
+
+        # Reset previous detection
+        self.selected_model_id = None
+        self.model_configuration = None
+        self.model_validation = None
+        self.serial_mapping_result = None
+        self.detected_serial_number = None
+
+        if hasattr(self, "start_button"):
+            self.start_button.setEnabled(False)
+
+        if not serial_number:
+
+            QMessageBox.warning(
+                self,
+                "Serial Number Required",
+                "Scan or enter serial number first."
+            )
+
+            self.serial_input.setFocus()
+            return
 
         try:
 
-            models = self.model_service.discover_models()
+            # ----------------------------------
+            # RESOLVE MODEL
+            # ----------------------------------
 
-            for model in models:
-
-                if model.get("enabled") is not True:
-                    continue
-
-                self.model_combo.addItem(
-                    f'{model["model_id"]} - {model["model_name"]}',
-                    model["model_id"]
+            mapping = (
+                self.model_service.resolve_model_by_serial(
+                    serial_number
                 )
+            )
+
+            model_id = mapping["model_id"]
+
+            # ----------------------------------
+            # LOAD MODEL
+            # ----------------------------------
+
+            configuration = (
+                self.model_service.load_model(model_id)
+            )
+
+            # ----------------------------------
+            # VALIDATE MODEL
+            # ----------------------------------
+
+            validation = (
+                self.model_service.validate_model(model_id)
+            )
+
+            if not validation["valid"]:
+
+                errors = "\n".join(
+                    f"- {error}"
+                    for error in validation["errors"]
+                )
+
+                raise ValueError(
+                    f"Model {model_id} configuration is invalid:\n"
+                    f"{errors}"
+                )
+
+            # ----------------------------------
+            # SAVE DETECTION RESULT
+            # ----------------------------------
+
+            self.selected_model_id = model_id
+            self.model_configuration = configuration
+            self.model_validation = validation
+
+            self.serial_mapping_result = mapping
+            self.detected_serial_number = (
+                mapping["serial_number"]
+            )
+
+            model_name = configuration["model"].get(
+                "model_name",
+                model_id
+            )
+
+            self.model_status_label.setStyleSheet(
+                "color: #77D6A5; font-weight: bold;"
+            )
+
+            self.model_status_label.setText(
+                f"MODEL DETECTED: {model_id}\n"
+                f"Model Name: {model_name}\n"
+                f"Matched Rule: {mapping['rule_id']}\n"
+                f"Matched Value: {mapping['matched_value']}\n"
+                "Configuration validation passed."
+            )
+
+            # ----------------------------------
+            # ENABLE EXECUTION
+            # ----------------------------------
+
+            self.start_button.setEnabled(True)
+
+            self.add_log(
+                "SYSTEM",
+                f"Serial number detected: "
+                f"{self.detected_serial_number}"
+            )
+
+            self.add_log(
+                "SUCCESS",
+                f"Model automatically selected: {model_id}"
+            )
 
         except Exception as error:
 
-            self.model_status_label.setText(
-                f"Model discovery failed: {error}"
+            self.selected_model_id = None
+            self.model_configuration = None
+            self.model_validation = None
+            self.serial_mapping_result = None
+            self.detected_serial_number = None
+
+            self.model_status_label.setStyleSheet(
+                "color: #FF8585; font-weight: bold;"
             )
 
-        self.model_combo.blockSignals(False)
-
-        if self.model_combo.count() == 0:
-
             self.model_status_label.setText(
-                "No enabled model found."
+                f"MODEL DETECTION FAILED\n{error}"
             )
 
-            return
+            QMessageBox.warning(
+                self,
+                "Model Detection Failed",
+                str(error)
+            )
 
-        self.model_combo.setCurrentIndex(0)
-
-        self.on_model_changed(0)
-
+            self.serial_input.setFocus()
 
     def on_model_changed(self, index):
 
@@ -443,12 +577,29 @@ class DashboardPage(QWidget):
         # MODEL VALIDATION
         # --------------------------------------
 
-        if not self.selected_model_id:
+        if (
+            not self.selected_model_id
+            or not self.model_configuration
+            or not self.detected_serial_number
+        ):
 
             QMessageBox.warning(
                 self,
-                "Model Required",
-                "Select a product model first."
+                "Product Identification Required",
+                "Detect a valid product model using serial number first."
+            )
+
+            return
+
+        if (
+            self.serial_input.text().strip().upper()
+            != self.detected_serial_number.upper()
+        ):
+
+            QMessageBox.warning(
+                self,
+                "Serial Number Changed",
+                "Serial number has changed. Detect the model again."
             )
 
             return
@@ -501,7 +652,7 @@ class DashboardPage(QWidget):
             )
 
             self.serial_label.setText(
-                "Serial Number: -"
+                f"Serial Number: {self.detected_serial_number}"
             )
 
             self.door_top_label.setText(
@@ -522,7 +673,10 @@ class DashboardPage(QWidget):
             self.engine = WorkflowEngine(
                 self.model_configuration,
                 self.operator,
-                self
+                self,
+                initial_data={
+                    "serial_number": self.detected_serial_number
+                }
             )
 
             self.engine.log_message.connect(
@@ -551,6 +705,9 @@ class DashboardPage(QWidget):
 
             self.start_button.setEnabled(False)
             self.abort_button.setEnabled(True)
+            
+            self.serial_input.setEnabled(False)
+            self.detect_model_button.setEnabled(False)
 
             self.engine.start()
 
@@ -671,6 +828,61 @@ class DashboardPage(QWidget):
                 "continue": True
             })
 
+        elif interaction_type == "live_measurement":
+
+            dialog = LiveMeasurementDialog(
+                instrument=request.get(
+                    "instrument",
+                    "WT310E"
+                ),
+                duration_s=request.get(
+                    "duration_s",
+                    10
+                ),
+                sample_interval_s=request.get(
+                    "sample_interval_s",
+                    1
+                ),
+                parent=self
+            )
+
+            self.engine.measurement_sample.connect(
+                dialog.update_measurement
+            )
+
+            self.engine.measurement_completed.connect(
+                dialog.finish_measurement
+            )
+
+            self.engine.measurement_failed.connect(
+                dialog.show_error
+            )
+
+            dialog.cancel_requested.connect(
+                self.abort_sequence
+            )
+
+            try:
+                dialog.exec()
+
+            finally:
+
+                self.engine.measurement_sample.disconnect(
+                    dialog.update_measurement
+                )
+
+                self.engine.measurement_completed.disconnect(
+                    dialog.finish_measurement
+                )
+
+                self.engine.measurement_failed.disconnect(
+                    dialog.show_error
+                )
+
+                dialog.cancel_requested.disconnect(
+                    self.abort_sequence
+                )
+
         else:
 
             self.workflow_failed(
@@ -709,6 +921,9 @@ class DashboardPage(QWidget):
 
         self.start_button.setEnabled(True)
         self.abort_button.setEnabled(False)
+
+        self.serial_input.setEnabled(True)
+        self.detect_model_button.setEnabled(True)
 
     def add_log(self, category, message):
 
@@ -755,11 +970,16 @@ class DashboardPage(QWidget):
         self.start_button.setEnabled(True)
         self.abort_button.setEnabled(False)
 
+        self.serial_input.setEnabled(True)
+        self.detect_model_button.setEnabled(True)
+
         QMessageBox.information(
             self,
             "Workflow Completed",
             "Test sequence completed and result saved."
         )
+
+
 
     def workflow_failed(self, message):
 
@@ -767,6 +987,9 @@ class DashboardPage(QWidget):
 
         self.start_button.setEnabled(True)
         self.abort_button.setEnabled(False)
+
+        self.serial_input.setEnabled(True)
+        self.detect_model_button.setEnabled(True)
 
         QMessageBox.critical(
             self,

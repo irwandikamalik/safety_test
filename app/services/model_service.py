@@ -102,6 +102,143 @@ class ModelService:
             self.global_root / "instrument_catalog.json"
         )
 
+
+    # --------------------------------------------------
+    # SERIAL NUMBER MODEL MAPPING
+    # --------------------------------------------------
+
+    def load_serial_model_mapping(self):
+
+        mapping_file = (
+            self.global_root / "serial_model_mapping.json"
+        )
+
+        configuration = self.read_json(mapping_file)
+
+        rules = configuration.get("rules")
+
+        if not isinstance(rules, list):
+            raise ValueError(
+                "serial_model_mapping.json: rules must be a list."
+            )
+
+        return rules
+
+    def resolve_model_by_serial(self, serial_number):
+
+        if not isinstance(serial_number, str):
+            raise ValueError(
+                "Serial number must be a string."
+            )
+
+        serial_number = serial_number.strip().upper()
+
+        if not serial_number:
+            raise ValueError(
+                "Serial number cannot be empty."
+            )
+
+        rules = self.load_serial_model_mapping()
+
+        matched_rules = []
+
+        for rule in rules:
+
+            if not isinstance(rule, dict):
+                raise ValueError(
+                    "Each serial mapping rule must be an object."
+                )
+
+            if rule.get("enabled") is not True:
+                continue
+
+            rule_id = rule.get("rule_id")
+            start = rule.get("start_suffix")
+            end = rule.get("end_suffix")
+            expected = rule.get("expected_value")
+            model_id = rule.get("model_id")
+
+            if not isinstance(rule_id, str) or not rule_id.strip():
+                raise ValueError(
+                    "Each rule must have a valid rule_id."
+                )
+
+            if (
+                not isinstance(start, int)
+                or isinstance(start, bool)
+                or not isinstance(end, int)
+                or isinstance(end, bool)
+            ):
+                raise ValueError(
+                    f"{rule_id}: start_suffix and end_suffix "
+                    "must be integers."
+                )
+
+            if start < 1 or end < start:
+                raise ValueError(
+                    f"{rule_id}: invalid character positions."
+                )
+
+            if not isinstance(expected, str) or not expected:
+                raise ValueError(
+                    f"{rule_id}: expected_value is required."
+                )
+
+            if not isinstance(model_id, str):
+                raise ValueError(
+                    f"{rule_id}: model_id must be a string."
+                )
+
+            if not self.MODEL_ID_PATTERN.fullmatch(model_id):
+                raise ValueError(
+                    f"{rule_id}: invalid model_id."
+                )
+
+            # Python uses zero-based indexing.
+            # The configured end position is inclusive.
+            actual_value = serial_number[start - 1:end]
+
+            if len(actual_value) != end - start + 1:
+                continue
+
+            if actual_value == expected.strip().upper():
+
+                matched_rules.append({
+                    "rule_id": rule_id,
+                    "model_id": model_id,
+                    "start_suffix": start,
+                    "end_suffix": end,
+                    "expected_value": expected.upper(),
+                    "matched_value": actual_value
+                })
+
+        if not matched_rules:
+
+            raise ValueError(
+                f"No model mapping found for serial number: "
+                f"{serial_number}"
+            )
+
+        if len(matched_rules) > 1:
+
+            rule_ids = ", ".join(
+                rule["rule_id"]
+                for rule in matched_rules
+            )
+
+            raise ValueError(
+                "Ambiguous serial number mapping. "
+                f"Multiple rules matched: {rule_ids}"
+            )
+
+        result = matched_rules[0]
+
+        return {
+            "serial_number": serial_number,
+            **result
+        }
+
+
     # --------------------------------------------------
     # MODEL DISCOVERY
     # --------------------------------------------------

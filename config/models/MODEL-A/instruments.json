@@ -1,10 +1,23 @@
-
 {
     "instruments": {
         "kikusui_tos9302": {
             "catalog_id": "kikusui_tos9302",
             "enabled": true,
             "overrides": {}
+        },
+        "wt310e": {
+            "catalog_id": "yokogawa_wt310e",
+            "enabled": true,
+            "overrides": {
+                "selected_measurements": [
+                    "voltage",
+                    "current",
+                    "active_power",
+                    "current_frequency",
+                    "voltage_frequency"
+                ],
+                "element": 1
+            }
         }
     }
 }

@@ -1,4 +1,3 @@
-
 class BaseInstrument:
 
     def connect(self):
@@ -8,4 +7,7 @@ class BaseInstrument:
         raise NotImplementedError
 
     def execute_test(self, function, parameters):
+        raise NotImplementedError
+
+    def read_measurements(self, parameters):
         raise NotImplementedError

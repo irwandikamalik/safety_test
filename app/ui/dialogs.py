@@ -1,4 +1,8 @@
-from PySide6.QtCore import Qt, QEvent
+from PySide6.QtCore import (
+    Qt,
+    QEvent,
+    Signal
+)
 
 from PySide6.QtWidgets import (
     QDialog,
@@ -8,9 +12,10 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QFormLayout,
-    QDialogButtonBox
+    QDialogButtonBox,
+    QProgressBar,
+    QFrame
 )
-
 
 class OperatorDialog(QDialog):
 
@@ -334,3 +339,372 @@ class MeasurementDialog(QDialog):
         button.clicked.connect(self.accept)
 
         layout.addWidget(button)
+
+
+
+class LiveMeasurementDialog(QDialog):
+
+    cancel_requested = Signal()
+
+    def __init__(
+        self,
+        instrument,
+        duration_s,
+        sample_interval_s,
+        parent=None
+    ):
+
+        super().__init__(parent)
+
+        self.instrument = instrument
+        self.duration_s = float(duration_s)
+        self.sample_interval_s = float(sample_interval_s)
+
+        self.is_running = True
+        self.value_labels = {}
+
+        self.setWindowTitle("Live Measurement")
+        self.setMinimumSize(680, 500)
+        self.resize(720, 560)
+        self.setModal(True)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 22, 24, 22)
+        layout.setSpacing(14)
+
+        # ======================================
+        # HEADER
+        # ======================================
+
+        title = QLabel("WT310E Live Measurement")
+        title.setObjectName("PageTitle")
+        layout.addWidget(title)
+
+        self.instrument_label = QLabel(
+            f"Instrument: {instrument}"
+        )
+        self.instrument_label.setStyleSheet(
+            "font-size: 10pt; color: #94A3B8;"
+        )
+        layout.addWidget(self.instrument_label)
+
+        # ======================================
+        # STATUS
+        # ======================================
+
+        self.status_label = QLabel("CONNECTING...")
+        self.status_label.setStyleSheet("""
+            font-size: 10pt;
+            font-weight: bold;
+            color: #D69E36;
+            padding: 5px 0px;
+        """)
+
+        layout.addWidget(self.status_label)
+
+        # ======================================
+        # MEASUREMENT INFORMATION
+        # ======================================
+
+        info_layout = QHBoxLayout()
+
+        self.time_label = QLabel(
+            f"Elapsed: 0.0 / {self.duration_s:.1f} s"
+        )
+
+        self.sample_label = QLabel("Samples: 0")
+
+        info_layout.addWidget(self.time_label)
+        info_layout.addStretch()
+        info_layout.addWidget(self.sample_label)
+
+        layout.addLayout(info_layout)
+
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setTextVisible(True)
+        self.progress_bar.setFixedHeight(18)
+
+        layout.addWidget(self.progress_bar)
+
+        # ======================================
+        # MEASUREMENT PANEL
+        # ======================================
+
+        section_title = QLabel("MEASUREMENT RESULTS")
+        section_title.setStyleSheet("""
+            font-size: 9pt;
+            font-weight: bold;
+            letter-spacing: 1px;
+            color: #94A3B8;
+            padding-top: 5px;
+        """)
+
+        layout.addWidget(section_title)
+
+        self.measurement_container = QFrame()
+        self.measurement_container.setObjectName(
+            "MeasurementPanel"
+        )
+
+        self.measurement_container.setStyleSheet("""
+            QFrame#MeasurementPanel {
+                background-color: #1E293B;
+                border: 1px solid #334155;
+                border-radius: 10px;
+            }
+        """)
+
+        self.measurement_layout = QVBoxLayout(
+            self.measurement_container
+        )
+
+        self.measurement_layout.setContentsMargins(
+            14, 12, 14, 12
+        )
+
+        self.measurement_layout.setSpacing(8)
+
+        layout.addWidget(self.measurement_container, 1)
+
+        # ======================================
+        # BUTTON
+        # ======================================
+
+        self.cancel_button = QPushButton(
+            "Cancel Measurement"
+        )
+
+        self.cancel_button.setObjectName("DangerButton")
+        self.cancel_button.setMinimumHeight(42)
+
+        self.cancel_button.clicked.connect(
+            self.cancel_measurement
+        )
+
+        layout.addWidget(self.cancel_button)
+
+    # ==========================================
+    # CREATE MEASUREMENT ROW
+    # ==========================================
+
+    def create_measurement_row(self, measurement_id):
+
+        row = QFrame()
+        row.setObjectName("MeasurementRow")
+
+        row.setStyleSheet("""
+            QFrame#MeasurementRow {
+                background-color: #263449;
+                border: 1px solid #3B4B60;
+                border-radius: 7px;
+            }
+        """)
+
+        row_layout = QHBoxLayout(row)
+
+        row_layout.setContentsMargins(
+            16, 10, 16, 10
+        )
+
+        row_layout.setSpacing(12)
+
+        display_name = (
+            measurement_id
+            .replace("_", " ")
+            .title()
+        )
+
+        name_label = QLabel(display_name)
+
+        name_label.setMinimumWidth(180)
+        name_label.setStyleSheet("""
+            font-size: 10pt;
+            font-weight: 500;
+            color: #CBD5E1;
+            border: none;
+            background: transparent;
+        """)
+
+        value_label = QLabel("--")
+
+        value_label.setMinimumWidth(180)
+        value_label.setAlignment(
+            Qt.AlignmentFlag.AlignRight |
+            Qt.AlignmentFlag.AlignVCenter
+        )
+
+        value_label.setStyleSheet("""
+            font-size: 12pt;
+            font-weight: bold;
+            color: #F8FAFC;
+            border: none;
+            background: transparent;
+        """)
+
+        row_layout.addWidget(name_label)
+        row_layout.addStretch()
+        row_layout.addWidget(value_label)
+
+        self.measurement_layout.addWidget(row)
+
+        self.value_labels[measurement_id] = value_label
+
+    # ==========================================
+    # UPDATE LIVE MEASUREMENT
+    # ==========================================
+
+    def update_measurement(
+        self,
+        measurements,
+        sample_number,
+        elapsed_s
+    ):
+
+        if not self.is_running:
+            return
+
+        self.sample_label.setText(
+            f"Samples: {sample_number}"
+        )
+
+        self.time_label.setText(
+            f"Elapsed: {elapsed_s:.1f} / "
+            f"{self.duration_s:.1f} s"
+        )
+
+        progress = min(
+            100,
+            int(elapsed_s / self.duration_s * 100)
+        )
+
+        self.progress_bar.setValue(progress)
+
+        for measurement_id, measurement in measurements.items():
+
+            value = measurement.get("value")
+            unit = measurement.get("unit", "")
+
+            if measurement_id not in self.value_labels:
+                self.create_measurement_row(
+                    measurement_id
+                )
+
+            if isinstance(value, (int, float)):
+                display_value = f"{value:,.3f}"
+            else:
+                display_value = str(value)
+
+            self.value_labels[measurement_id].setText(
+                f"{display_value} {unit}"
+            )
+
+    # ==========================================
+    # MEASUREMENT COMPLETED
+    # ==========================================
+
+    def finish_measurement(self, result):
+
+        # Update final values BEFORE setting is_running False.
+        self.update_measurement(
+            result.get("measurements", {}),
+            result.get("sample_count", 0),
+            result.get("duration_s", 0)
+        )
+
+        self.is_running = False
+
+        self.progress_bar.setValue(100)
+
+        self.status_label.setText(
+            "MEASUREMENT COMPLETED"
+        )
+
+        self.status_label.setStyleSheet("""
+            font-size: 10pt;
+            font-weight: bold;
+            color: #77D6A5;
+            padding: 5px 0px;
+        """)
+
+        self.time_label.setText(
+            f"Elapsed: {result.get('duration_s', 0):.2f} s"
+        )
+
+        self.sample_label.setText(
+            f"Total Samples: {result.get('sample_count', 0)}"
+        )
+
+        self.cancel_button.setText("Close")
+
+        self.cancel_button.clicked.disconnect(
+            self.cancel_measurement
+        )
+
+        self.cancel_button.setObjectName("PrimaryButton")
+        self.cancel_button.clicked.connect(self.accept)
+
+        self.cancel_button.style().unpolish(
+            self.cancel_button
+        )
+        self.cancel_button.style().polish(
+            self.cancel_button
+        )
+
+    # ==========================================
+    # MEASUREMENT FAILED
+    # ==========================================
+
+    def show_error(self, message):
+
+        self.is_running = False
+
+        self.status_label.setText(
+            "MEASUREMENT FAILED"
+        )
+
+        self.status_label.setStyleSheet("""
+            font-size: 10pt;
+            font-weight: bold;
+            color: #FF8585;
+            padding: 5px 0px;
+        """)
+
+        self.time_label.setText(message)
+        self.time_label.setWordWrap(True)
+
+        self.cancel_button.setText("Close")
+
+        self.cancel_button.clicked.disconnect(
+            self.cancel_measurement
+        )
+
+        self.cancel_button.setObjectName("PrimaryButton")
+        self.cancel_button.clicked.connect(self.accept)
+
+        self.cancel_button.style().unpolish(
+            self.cancel_button
+        )
+        self.cancel_button.style().polish(
+            self.cancel_button
+        )
+
+    # ==========================================
+    # CANCEL
+    # ==========================================
+
+    def cancel_measurement(self):
+
+        if self.is_running:
+            self.cancel_requested.emit()
+
+        self.reject()
+
+    def keyPressEvent(self, event):
+
+        if event.key() == Qt.Key.Key_Escape:
+            self.cancel_measurement()
+            return
+
+        super().keyPressEvent(event)
