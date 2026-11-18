@@ -3,6 +3,14 @@ from app.instruments.simulation_instrument import (
     SimulationInstrument
 )
 
+from app.instruments.generic_scpi_instrument import (
+    GenericSCPIInstrument
+)
+
+from app.instruments.kikusui_tos9300_instrument import (
+    KikusuiTOS9300Instrument
+)
+
 
 class DriverRegistry:
 
@@ -10,10 +18,19 @@ class DriverRegistry:
 
         self._drivers = {}
 
-        # Register built-in simulation driver.
         self.register(
             "simulation",
             SimulationInstrument
+        )
+
+        self.register(
+            "generic_scpi",
+            GenericSCPIInstrument
+        )
+
+        self.register(
+            "kikusui_tos9300",
+            KikusuiTOS9300Instrument
         )
 
     def register(self, driver_id, driver_class):

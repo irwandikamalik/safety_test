@@ -1,0 +1,21 @@
+
+{
+    "rules": [
+        {
+            "rule_id": "RULE_MODEL_A",
+            "start_suffix": 5,
+            "end_suffix": 7,
+            "expected_value": "13J",
+            "model_id": "MODEL-A",
+            "enabled": true
+        },
+        {
+            "rule_id": "RULE_MODEL_B",
+            "start_suffix": 5,
+            "end_suffix": 7,
+            "expected_value": "13E",
+            "model_id": "MODEL-B",
+            "enabled": true
+        }
+    ]
+}

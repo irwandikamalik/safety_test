@@ -8,12 +8,17 @@ class InstrumentManager:
         self,
         model_configuration,
         instrument_catalog,
-        application_configuration
+        application_configuration,
+        hardware_measurement_ids=None
     ):
 
         self.model_configuration = model_configuration
         self.instrument_catalog = instrument_catalog
         self.application_configuration = application_configuration
+
+        self.hardware_measurement_ids = set(
+            hardware_measurement_ids or []
+        )
 
         self.registry = DriverRegistry()
         self.instruments = {}
@@ -26,12 +31,7 @@ class InstrumentManager:
         )
 
         self._validate_application_mode()
-
         self._load_instruments()
-
-    # ==========================================
-    # APPLICATION MODE
-    # ==========================================
 
     def _validate_application_mode(self):
 
@@ -53,20 +53,14 @@ class InstrumentManager:
                 "Hardware mode is disabled by application policy."
             )
 
-    # ==========================================
-    # INSTRUMENT CONFIGURATION
-    # ==========================================
-
     def _load_instruments(self):
 
         model_instruments = self.model_configuration.get(
-            "instruments",
-            {}
+            "instruments", {}
         )
 
         catalog_instruments = self.instrument_catalog.get(
-            "instruments",
-            {}
+            "instruments", {}
         )
 
         if not isinstance(model_instruments, dict):
@@ -103,21 +97,42 @@ class InstrumentManager:
                     f"Instrument catalog entry not found: {catalog_id}"
                 )
 
-            driver_configuration = (
-                self._merge_configuration(
-                    catalog_config,
-                    model_config
-                )
+            driver_configuration = self._merge_configuration(
+                catalog_config,
+                model_config
             )
+
+            # ----------------------------------
+            # DRIVER SELECTION
+            # ----------------------------------
 
             if self.application_mode == "SIMULATION":
 
-                # Simulation mode always uses the simulation driver.
-                driver_id = "simulation"
+                if instrument_id in self.hardware_measurement_ids:
+
+                    # Explicit read-only hardware allowlist.
+                    # This path is restricted to WT310E.
+                    if (
+                        instrument_id != "wt310e"
+                        or catalog_id != "yokogawa_wt310e"
+                    ):
+                        raise RuntimeError(
+                            "Hardware measurement access is restricted "
+                            "to the configured Yokogawa WT310E."
+                        )
+
+                    driver_id = catalog_config.get("driver")
+
+                    if driver_id != "generic_scpi":
+                        raise RuntimeError(
+                            "WT310E must use the generic_scpi driver."
+                        )
+
+                else:
+                    driver_id = "simulation"
 
             else:
 
-                # Hardware driver must be explicitly registered.
                 driver_id = catalog_config.get("driver")
 
                 if not driver_id:
@@ -132,10 +147,6 @@ class InstrumentManager:
 
             self.instruments[instrument_id] = instrument
 
-    # ==========================================
-    # CONFIGURATION MERGING
-    # ==========================================
-
     @staticmethod
     def _merge_configuration(
         catalog_config,
@@ -145,13 +156,11 @@ class InstrumentManager:
         merged = dict(catalog_config)
 
         catalog_connection = catalog_config.get(
-            "connection",
-            {}
+            "connection", {}
         )
 
         overrides = model_config.get(
-            "overrides",
-            {}
+            "overrides", {}
         )
 
         if not isinstance(overrides, dict):
@@ -160,8 +169,7 @@ class InstrumentManager:
             )
 
         connection_overrides = overrides.get(
-            "connection",
-            {}
+            "connection", {}
         )
 
         if not isinstance(connection_overrides, dict):
@@ -174,7 +182,6 @@ class InstrumentManager:
             **connection_overrides
         }
 
-        # Apply other model-specific overrides.
         for key, value in overrides.items():
 
             if key == "connection":
@@ -188,15 +195,9 @@ class InstrumentManager:
 
         return merged
 
-    # ==========================================
-    # INSTRUMENT ACCESS
-    # ==========================================
-
     def get_instrument(self, instrument_id):
 
-        instrument = self.instruments.get(
-            instrument_id
-        )
+        instrument = self.instruments.get(instrument_id)
 
         if instrument is None:
             raise ValueError(
@@ -207,19 +208,15 @@ class InstrumentManager:
 
     def connect(self, instrument_id):
 
-        instrument = self.get_instrument(
+        return self.get_instrument(
             instrument_id
-        )
-
-        return instrument.connect()
+        ).connect()
 
     def disconnect(self, instrument_id):
 
-        instrument = self.get_instrument(
+        self.get_instrument(
             instrument_id
-        )
-
-        instrument.disconnect()
+        ).disconnect()
 
     def execute_test(
         self,
@@ -228,14 +225,80 @@ class InstrumentManager:
         parameters
     ):
 
-        instrument = self.get_instrument(
-            instrument_id
-        )
+        instrument = self.get_instrument(instrument_id)
 
         return instrument.execute_test(
             function,
             parameters
         )
+
+    def read_measurements(
+        self,
+        instrument_id,
+        measurement_ids=None
+    ):
+
+        instrument = self.get_instrument(instrument_id)
+
+        instrument_configuration = instrument.configuration
+
+        measurement_catalog = (
+            instrument_configuration.get(
+                "measurements", {}
+            )
+        )
+
+        if not isinstance(measurement_catalog, dict):
+            raise ValueError(
+                "Instrument measurement catalog must be an object."
+            )
+
+        selected_ids = measurement_ids
+
+        if selected_ids is None:
+            selected_ids = instrument_configuration.get(
+                "selected_measurements", []
+            )
+
+        if not selected_ids:
+            raise ValueError(
+                f"No measurements selected for {instrument_id}."
+            )
+
+        measurement_definitions = []
+
+        for measurement_id in selected_ids:
+
+            definition = measurement_catalog.get(
+                measurement_id
+            )
+
+            if definition is None:
+                raise ValueError(
+                    f"Unknown measurement: {measurement_id}"
+                )
+
+            if not isinstance(definition, dict):
+                raise ValueError(
+                    f"Invalid measurement definition: {measurement_id}"
+                )
+
+            measurement_definitions.append({
+                "id": measurement_id,
+                **definition
+            })
+
+        parameters = {
+            "measurements": measurement_definitions,
+            "element": instrument_configuration.get(
+                "element", 1
+            ),
+            "simulation_values": instrument_configuration.get(
+                "simulation_values", {}
+            )
+        }
+
+        return instrument.read_measurements(parameters)
 
     def available_instruments(self):
 

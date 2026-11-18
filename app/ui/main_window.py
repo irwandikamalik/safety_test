@@ -16,6 +16,7 @@ from app.ui.dashboard import DashboardPage
 from app.ui.configuration_page import ConfigurationPage
 from app.ui.dialogs import OperatorDialog
 from app.ui.history_page import HistoryPage
+from app.ui.instrument_configuration_page import InstrumentConfigurationPage
 
 
 class MainWindow(QMainWindow):
@@ -86,15 +87,19 @@ class MainWindow(QMainWindow):
         side_layout.addWidget(caption)
 
         self.create_nav_button(
-            "Sequence JSON", 2, side_layout
+            "Model Configuration", 2, side_layout
         )
 
         self.create_nav_button(
-            "Instruments JSON", 3, side_layout
+            "Serial Mapping", 3, side_layout
         )
 
         self.create_nav_button(
-            "Parameters JSON", 4, side_layout
+            "Sequence JSON", 4, side_layout
+        )
+
+        self.create_nav_button(
+            "Instrument Configuration", 5, side_layout
         )
 
         side_layout.addStretch()
@@ -161,42 +166,54 @@ class MainWindow(QMainWindow):
 
         self.history_page = HistoryPage()
 
+
+        # ==========================================
+        # CONFIGURATION PAGES
+        # ==========================================
+
+        self.model_page = ConfigurationPage(
+            "Model Configuration",
+            [
+                (
+                    "Model",
+                    "models/MODEL-A/model.json"
+                ),
+                (
+                    "Parameters",
+                    "models/MODEL-A/parameters.json"
+                )
+            ]
+        )
+
+        self.mapping_page = ConfigurationPage(
+            "Serial Mapping Configuration",
+            [
+                (
+                    "Serial Mapping",
+                    "global/serial_model_mapping.json"
+                )
+            ]
+        )
+
         self.sequence_page = ConfigurationPage(
             "Sequence Configuration",
             [
                 (
-                    "Safety Test",
-                    "sequences/safety_test.json"
+                    "MODEL-A",
+                    "models/MODEL-A/sequence.json"
                 )
             ]
         )
 
-        self.instrument_page = ConfigurationPage(
-            "Instrument Configuration",
-            [
-                (
-                    "Instruments",
-                    "instruments/instruments.json"
-                )
-            ]
-        )
-
-        self.parameter_page = ConfigurationPage(
-            "Test Parameters",
-            [
-                (
-                    "Model A",
-                    "parameters/model_a.json"
-                )
-            ]
-        )
+        self.instrument_page = InstrumentConfigurationPage()
 
         pages = [
             self.dashboard,
             self.history_page,
+            self.model_page,
+            self.mapping_page,
             self.sequence_page,
-            self.instrument_page,
-            self.parameter_page
+            self.instrument_page
         ]
 
         for page in pages:
@@ -250,11 +267,12 @@ class MainWindow(QMainWindow):
         titles = [
             "Test Execution",
             "Test History",
+            "Model Configuration",
+            "Serial Mapping Configuration",
             "Sequence Configuration",
-            "Instrument Configuration",
-            "Test Parameters"
+            "Instrument Configuration"
         ]
-
+        
         self.page_heading.setText(titles[index])
 
         for i, button in enumerate(self.nav_buttons):

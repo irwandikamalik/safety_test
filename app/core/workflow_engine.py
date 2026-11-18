@@ -1,3 +1,6 @@
+from app.workflows.instrument_measurement_step import (
+    InstrumentMeasurementStep
+)
 
 from PySide6.QtCore import QObject, Signal, QTimer
 
@@ -10,6 +13,7 @@ from app.workflows.instrument_test_step import InstrumentTestStep
 from app.instruments.instrument_manager import InstrumentManager
 from app.database.database_manager import DatabaseManager
 from app.services.logging_service import LoggingService
+from app.instruments.measurement_worker import MeasurementWorker
 
 
 class WorkflowEngine(QObject):
@@ -24,11 +28,17 @@ class WorkflowEngine(QObject):
     finished = Signal()
     failed = Signal(str)
 
+    measurement_sample = Signal(dict, int, float)
+    measurement_completed = Signal(dict)
+    measurement_failed = Signal(str)
+
+
     def __init__(
         self,
         model_configuration,
         operator,
-        parent=None
+        parent=None,
+        initial_data=None
     ):
 
         super().__init__(parent)
@@ -40,9 +50,11 @@ class WorkflowEngine(QObject):
         # --------------------------------------
 
         self.model = model_configuration["model"]
+
         self.sequence_configuration = (
             model_configuration["sequence"]
         )
+
         self.parameter_configuration = (
             model_configuration["parameters"]
         )
@@ -66,26 +78,20 @@ class WorkflowEngine(QObject):
         # WORKFLOW CONTEXT
         # --------------------------------------
 
-        self.context = WorkflowContext(operator)
+        initial_data = dict(initial_data or {})
 
-        self.context.set(
-            "model_id",
-            self.model.get("model_id")
-        )
+        initial_data.update({
+            "model_id": self.model.get("model_id"),
+            "model_name": self.model.get("model_name"),
+            "sequence_id": (
+                self.sequence_configuration.get("sequence_id")
+            ),
+            "application_mode": self.application_mode,
+        })
 
-        self.context.set(
-            "model_name",
-            self.model.get("model_name")
-        )
-
-        self.context.set(
-            "sequence_id",
-            self.sequence_configuration.get("sequence_id")
-        )
-
-        self.context.set(
-            "application_mode",
-            self.application_mode
+        self.context = WorkflowContext(
+            operator,
+            initial_data
         )
 
         # --------------------------------------
@@ -118,6 +124,7 @@ class WorkflowEngine(QObject):
 
         self.running = False
         self.waiting = False
+        self.measurement_workers = []
 
         self.timer = QTimer(self)
         self.timer.setSingleShot(True)
@@ -225,8 +232,15 @@ class WorkflowEngine(QObject):
 
                 outcome = self.execute_instrument_test()
 
-            else:
+            elif isinstance(
+                self.current_step,
+                InstrumentMeasurementStep
+            ):
 
+                self.execute_instrument_measurement()
+                return
+
+            else:
                 outcome = self.current_step.execute(
                     self.context
                 )
@@ -343,6 +357,148 @@ class WorkflowEngine(QObject):
             data=result
         )
 
+    # ==========================================
+    # INSTRUMENT MEASUREMENT EXECUTION
+    # ==========================================
+
+    def execute_instrument_measurement(self):
+
+        parameters = self.current_configuration.get("parameters", {})
+
+        instrument_id = parameters.get("instrument")
+
+        if not instrument_id:
+            raise ValueError("Instrument ID is required.")
+
+        duration_s = float(parameters.get("duration_s", 10))
+        sample_interval_s = float(parameters.get("sample_interval_s", 1))
+
+        measurement_ids = parameters.get("measurements")
+
+        if duration_s <= 0:
+            raise ValueError("Measurement duration must be greater than zero.")
+
+        if sample_interval_s <= 0:
+            raise ValueError("Sample interval must be greater than zero.")
+
+        self.log(
+            "INFO",
+            f"Starting live measurement: {instrument_id}"
+        )
+
+        worker = MeasurementWorker(
+            model_instruments=self.model_configuration["instruments"],
+            instrument_catalog=self.instrument_catalog,
+            application_configuration=self.application_configuration,
+            instrument_id=instrument_id,
+            duration_s=duration_s,
+            sample_interval_s=sample_interval_s,
+            measurement_ids=measurement_ids
+        )
+
+        self.measurement_workers.append(worker)
+
+        # Connect worker signals.
+        worker.sample_received.connect(
+            self.measurement_sample.emit
+        )
+
+        worker.measurement_completed.connect(
+            self.on_instrument_measurement_completed
+        )
+
+        worker.measurement_failed.connect(
+            self.on_instrument_measurement_failed
+        )
+
+        worker.finished.connect(
+            lambda w=worker: self.cleanup_measurement_worker(w)
+        )
+
+        # Start worker first, before opening the modal dialog.
+        QTimer.singleShot(0, worker.start)
+
+        # Then request Dashboard to open the live measurement dialog.
+        self.interaction_requested.emit({
+            "type": "live_measurement",
+            "instrument": instrument_id,
+            "duration_s": duration_s,
+            "sample_interval_s": sample_interval_s
+        })
+
+
+    def on_instrument_measurement_completed(self, result):
+
+        if not self.running:
+            return
+
+        measurements = self.context.get(
+            "measurements",
+            {}
+        )
+
+        step_id = self.current_configuration.get(
+            "id",
+            f"step_{self.index + 1}"
+        )
+
+        measurements[step_id] = result
+
+        self.context.set(
+            "measurements",
+            measurements
+        )
+
+        measured_values = result.get(
+            "measurements",
+            {}
+        )
+
+        for measurement_id, measurement in measured_values.items():
+
+            self.log(
+                "MEASUREMENT",
+                f"{measurement_id}: "
+                f"{measurement.get('value')} "
+                f"{measurement.get('unit', '')}"
+            )
+
+        self.log(
+            "INSTRUMENT",
+            f"Measurement completed. "
+            f"Samples: {result.get('sample_count', 0)}"
+        )
+
+        self.measurement_completed.emit(result)
+
+        self.finish_current_step(
+            StepOutcome(
+                success=True,
+                message=(
+                    f"Measurement completed: "
+                    f"{result.get('instrument')}"
+                ),
+                data=result
+            )
+        )
+
+
+    def on_instrument_measurement_failed(self, message):
+
+        if not self.running:
+            return
+
+        self.measurement_failed.emit(message)
+        self.fail(message)
+
+
+    def cleanup_measurement_worker(self, worker):
+
+        if worker in self.measurement_workers:
+            self.measurement_workers.remove(worker)
+
+        worker.deleteLater()
+        
     # ==========================================
     # INTERACTION HANDLING
     # ==========================================
@@ -474,6 +630,10 @@ class WorkflowEngine(QObject):
 
         self.running = False
         self.waiting = False
+
+        # Request background measurement workers to stop.
+        for worker in self.measurement_workers:
+            worker.request_stop()
 
         self.log(
             "ABORT",

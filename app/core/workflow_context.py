@@ -1,7 +1,7 @@
 
 class WorkflowContext:
 
-    def __init__(self, operator=None):
+    def __init__(self, operator=None, initial_data=None):
 
         self.data = {
             # Operator
@@ -23,6 +23,9 @@ class WorkflowContext:
             "measurements": {},
             "judgment": None,
         }
+
+        if isinstance(initial_data, dict):
+            self.data.update(initial_data)
 
     def set(self, key, value):
 

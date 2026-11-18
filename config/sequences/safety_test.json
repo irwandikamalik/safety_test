@@ -95,21 +95,6 @@
                     "simulation_current_mA": 0.42
                 }
             }
-        },
-        {
-            "id": "step_009",
-            "type": "instrument_test",
-            "name": "AC Earth Test",
-            "enabled": true,
-            "parameters": {
-                "instrument": "kikusui_tos9302",
-                "function": "earth_test",
-                "test_parameters": {
-                    "test_voltage_V": 1500,
-                    "test_duration_s": 2.0,
-                    "simulation_current_mA": 0.42
-                }
-            }
         }
     ]
 }

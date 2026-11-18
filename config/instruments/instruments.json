@@ -6,10 +6,12 @@
             "name": "Kikusui TOS9302",
             "driver": "kikusui_tos9300",
             "connection": {
-                "interface": "SERIAL",
-                "port": "COM4",
-                "baudrate": 9600,
-                "timeout": 5000
+                "interface": "USB",
+                "resource": "USB0::0x0B3E::0x104F::ZC001527::INSTR",
+                "timeout": 5000,
+                "backend": "",
+                "read_termination": "\n",
+                "write_termination": "\n"
             },
             "supported_functions": [
                 "ac_withstanding"
@@ -20,8 +22,11 @@
             "driver": "generic_scpi",
             "connection": {
                 "interface": "USB",
-                "resource": "USB0::...::INSTR",
-                "timeout": 5000
+                "resource": "USB0::0x0B21::0x0025::43335348303130303145::INSTR",
+                "timeout": 5000,
+                "backend": "",
+                "read_termination": "\n",
+                "write_termination": "\n"
             },
             "supported_functions": [
                 "voltage",

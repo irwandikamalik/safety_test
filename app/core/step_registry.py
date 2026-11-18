@@ -6,6 +6,9 @@ from app.workflows.validation_step import (
 )
 from app.workflows.approval_step import ApprovalStep
 from app.workflows.instrument_test_step import InstrumentTestStep
+from app.workflows.instrument_measurement_step import (
+    InstrumentMeasurementStep
+)
 
 
 class StepRegistry:
@@ -18,8 +21,10 @@ class StepRegistry:
         self.register(BarcodeValidationStep)
         self.register(ApprovalStep)
         self.register(InstrumentTestStep)
+        self.register(InstrumentMeasurementStep)
 
     def register(self, step_class):
+
         self._steps[step_class.step_type] = step_class
 
     def create(self, configuration):
@@ -36,4 +41,5 @@ class StepRegistry:
         return step_class(configuration)
 
     def available_types(self):
+
         return list(self._steps.keys())
