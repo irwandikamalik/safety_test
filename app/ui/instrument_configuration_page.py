@@ -194,6 +194,7 @@ class InstrumentConfigurationPage(QWidget):
 
         self.interface_input.addItems([
             "USB",
+            "RS232C",
             "SERIAL",
             "GPIB",
             "TCPIP"
@@ -212,7 +213,7 @@ class InstrumentConfigurationPage(QWidget):
 
         self.baudrate_input = QSpinBox()
         self.baudrate_input.setRange(300, 2000000)
-        self.baudrate_input.setValue(9600)
+        self.baudrate_input.setValue(12900)
 
         self.timeout_input = QSpinBox()
         self.timeout_input.setRange(100, 120000)
@@ -266,6 +267,137 @@ class InstrumentConfigurationPage(QWidget):
         )
 
         root.addWidget(self.connection_group)
+
+        # ==========================================
+        # PCR500M AC POWER SUPPLY CONFIGURATION
+        # ==========================================
+
+        self.pcr_group = QGroupBox(
+            "Kikusui PCR500M - AC Power Supply"
+        )
+
+        pcr_layout = QVBoxLayout(
+            self.pcr_group
+        )
+
+        pcr_form = QFormLayout()
+
+        self.pcr_voltage_range_input = QComboBox()
+
+        self.pcr_voltage_range_input.addItem(
+            "270 V",
+            270.0
+        )
+
+        self.pcr_voltage_input = QLineEdit("230.0")
+        self.pcr_frequency_input = QLineEdit("50.0")
+
+        for widget in (
+            self.pcr_voltage_input,
+            self.pcr_frequency_input
+        ):
+
+            validator = QDoubleValidator(
+                0.0,
+                1000.0,
+                2,
+                widget
+            )
+
+            validator.setLocale(
+                QLocale(QLocale.Language.English)
+            )
+
+            widget.setValidator(validator)
+
+        pcr_form.addRow(
+            "Voltage Range:",
+            self.pcr_voltage_range_input
+        )
+
+        pcr_form.addRow(
+            "Output Voltage (V):",
+            self.pcr_voltage_input
+        )
+
+        pcr_form.addRow(
+            "Frequency (Hz):",
+            self.pcr_frequency_input
+        )
+
+        pcr_layout.addLayout(pcr_form)
+
+        self.pcr_status_label = QLabel(
+            "Status: Not Connected"
+        )
+
+        self.pcr_status_label.setObjectName(
+            "Muted"
+        )
+
+        pcr_layout.addWidget(
+            self.pcr_status_label
+        )
+
+        pcr_button_layout = QHBoxLayout()
+
+        self.pcr_connect_button = QPushButton(
+            "Connect & Identify"
+        )
+
+        self.pcr_apply_button = QPushButton(
+            "Apply Configuration"
+        )
+
+        self.pcr_read_button = QPushButton(
+            "Read Configuration"
+        )
+
+        self.pcr_disconnect_button = QPushButton(
+            "Disconnect"
+        )
+
+        self.pcr_connect_button.clicked.connect(
+            self.pcr_connect_and_identify
+        )
+
+        self.pcr_apply_button.clicked.connect(
+            self.pcr_apply_configuration
+        )
+
+        self.pcr_read_button.clicked.connect(
+            self.pcr_read_configuration
+        )
+
+        self.pcr_disconnect_button.clicked.connect(
+            self.pcr_disconnect
+        )
+
+        pcr_button_layout.addWidget(
+            self.pcr_connect_button
+        )
+
+        pcr_button_layout.addWidget(
+            self.pcr_apply_button
+        )
+
+        pcr_button_layout.addWidget(
+            self.pcr_read_button
+        )
+
+        pcr_button_layout.addWidget(
+            self.pcr_disconnect_button
+        )
+
+        pcr_layout.addLayout(
+            pcr_button_layout
+        )
+
+        self.pcr_group.setVisible(False)
+
+        root.addWidget(
+            self.pcr_group
+        )
 
         # MODEL-SPECIFIC CONFIGURATION
 
@@ -504,13 +636,325 @@ class InstrumentConfigurationPage(QWidget):
 
     def on_interface_changed(self, interface):
 
-        is_serial = interface.upper() == "SERIAL"
+        interface = interface.upper()
 
-        self.port_input.setEnabled(is_serial)
-        self.baudrate_input.setEnabled(is_serial)
+        is_serial = interface in ("SERIAL", "RS232C")
 
-        self.resource_input.setEnabled(not is_serial)
+        self.port_input.setEnabled(
+            interface == "SERIAL"
+        )
 
+        self.baudrate_input.setEnabled(
+            is_serial
+        )
+
+        self.resource_input.setEnabled(
+            interface != "SERIAL"
+        )
+
+    # ==========================================
+    # PCR500M AC POWER SUPPLY
+    # ==========================================
+
+    def create_pcr_instrument(self):
+
+        configuration = self.build_driver_configuration()
+
+        if configuration.get("driver") != "kikusui_pcr500m":
+            raise ValueError(
+                "Selected instrument is not Kikusui PCR500M."
+            )
+
+        application_config = json.loads(
+            self.service.read_config(
+                "global/application.json"
+            )
+        )
+
+        application_mode = application_config.get(
+            "application_mode",
+            "SIMULATION"
+        )
+
+        if application_mode == "SIMULATION":
+
+            return SimulationInstrument(
+                configuration
+            )
+
+        if application_mode == "HARDWARE":
+
+            if application_config.get(
+                "allow_hardware_mode"
+            ) is not True:
+
+                raise RuntimeError(
+                    "Hardware mode is disabled by application policy."
+                )
+
+            return self.driver_registry.create(
+                "kikusui_pcr500m",
+                configuration
+            )
+
+        raise ValueError(
+            f"Invalid application mode: {application_mode}"
+        )
+
+    def get_pcr_parameters(self):
+
+        voltage_text = (
+            self.pcr_voltage_input.text().strip()
+        )
+
+        frequency_text = (
+            self.pcr_frequency_input.text().strip()
+        )
+
+        if not voltage_text or not frequency_text:
+            raise ValueError(
+                "Voltage and frequency cannot be empty."
+            )
+
+        voltage = float(voltage_text)
+        frequency = float(frequency_text)
+
+        if not 0 < voltage <= 275:
+            raise ValueError(
+                "Output voltage must be greater than 0 "
+                "and not exceed 275 V."
+            )
+
+        if not 40 <= frequency <= 500:
+            raise ValueError(
+                "Frequency must be between 40 and 500 Hz."
+            )
+
+        return {
+            "voltage_range_V": float(
+                self.pcr_voltage_range_input.currentData()
+            ),
+            "output_voltage_V": voltage,
+            "frequency_Hz": frequency
+        }
+
+    def pcr_connect_and_identify(self):
+
+        if not self.save_settings(show_message=False):
+            return
+
+        instrument = None
+
+        try:
+
+            instrument = self.create_pcr_instrument()
+
+            instrument.connect()
+
+            if hasattr(instrument, "identify"):
+
+                identity = instrument.identify()
+
+            else:
+
+                identity = (
+                    "Simulation Instrument - "
+                    "Kikusui PCR500M profile"
+                )
+
+            self.pcr_status_label.setText(
+                f"Status: Connection Verified - {identity}"
+            )
+
+            self.pcr_apply_button.setEnabled(True)
+            self.pcr_read_button.setEnabled(True)
+
+            QMessageBox.information(
+                self,
+                "PCR500M Connection",
+                f"Connection successful.\n\n{identity}"
+            )
+
+        except Exception as error:
+
+            self.pcr_status_label.setText(
+                "Status: Connection Failed"
+            )
+
+            self.pcr_apply_button.setEnabled(False)
+            self.pcr_read_button.setEnabled(False)
+
+            QMessageBox.critical(
+                self,
+                "PCR500M Connection Failed",
+                str(error)
+            )
+
+        finally:
+
+            if instrument is not None:
+
+                try:
+                    instrument.disconnect()
+                except Exception:
+                    pass
+
+    def pcr_apply_configuration(self):
+
+        if not self.save_settings(show_message=False):
+            return
+
+        instrument = None
+
+        try:
+
+            parameters = self.get_pcr_parameters()
+
+            instrument = self.create_pcr_instrument()
+
+            instrument.connect()
+
+            result = instrument.configure(
+                parameters
+            )
+
+            self.display_pcr_configuration(result)
+
+            QMessageBox.information(
+                self,
+                "PCR500M Configuration",
+                "Configuration applied and verified successfully.\n\n"
+                "Output status: OFF"
+            )
+
+        except Exception as error:
+
+            QMessageBox.critical(
+                self,
+                "PCR500M Configuration Error",
+                str(error)
+            )
+
+        finally:
+
+            if instrument is not None:
+
+                try:
+                    instrument.disconnect()
+                except Exception:
+                    pass
+
+    def pcr_read_configuration(self):
+
+        print("[PCR DEBUG] Read Configuration button clicked.")
+
+        instrument = None
+
+        try:
+
+            print("[PCR DEBUG] Creating instrument...")
+
+            instrument = self.create_pcr_instrument()
+
+            print("[PCR DEBUG] Connecting...")
+
+            instrument.connect()
+
+            print("[PCR DEBUG] Reading configuration...")
+
+            result = instrument.read_configuration()
+
+            print("[PCR DEBUG] Result:", result)
+
+            self.display_pcr_configuration(result)
+
+            print("[PCR DEBUG] Display completed.")
+
+            QMessageBox.information(
+                self,
+                "PCR500M",
+                "Configuration read successfully."
+            )
+
+        except Exception as error:
+
+            print("[PCR DEBUG] ERROR:", repr(error))
+
+            QMessageBox.critical(
+                self,
+                "PCR500M Read Configuration Error",
+                str(error)
+            )
+
+        finally:
+
+            if instrument is not None:
+
+                try:
+                    instrument.disconnect()
+                    print("[PCR DEBUG] Disconnected.")
+
+                except Exception as error:
+                    print("[PCR DEBUG] Disconnect error:", repr(error))
+                    
+    def pcr_disconnect(self):
+
+        self.pcr_status_label.setText(
+            "Status: Disconnected"
+        )
+
+        self.pcr_apply_button.setEnabled(False)
+        self.pcr_read_button.setEnabled(False)
+
+    def display_pcr_configuration(self, result):
+
+        rows = [
+            ("Output Mode", result.get("output_mode", "-"), ""),
+            ("Output Status", result.get("output_status", "-"), ""),
+            ("Voltage Range", result.get("voltage_range_V", "-"), "V"),
+            ("Output Voltage", result.get("output_voltage_V", "-"), "V"),
+            ("Frequency", result.get("frequency_Hz", "-"), "Hz"),
+        ]
+
+        self.result_table.setRowCount(
+            len(rows)
+        )
+
+        for row, (name, value, unit) in enumerate(rows):
+
+            self.result_table.setItem(
+                row,
+                0,
+                QTableWidgetItem(name)
+            )
+
+            self.result_table.setItem(
+                row,
+                1,
+                QTableWidgetItem(str(value))
+            )
+
+            self.result_table.setItem(
+                row,
+                2,
+                QTableWidgetItem(unit)
+            )
+
+        self.result_table.resizeRowsToContents()
+
+        simulation = result.get(
+            "simulation", False
+        )
+
+        mode_text = (
+            "SIMULATION"
+            if simulation
+            else "HARDWARE"
+        )
+
+        self.pcr_status_label.setText(
+            f"Status: Configuration Read - {mode_text}"
+        )
 
     # ==========================================
     # MODEL SELECTION
@@ -946,9 +1390,52 @@ class InstrumentConfigurationPage(QWidget):
 
             self.current_instrument_id = catalog_id
 
+            is_pcr500m = (
+                catalog_id == "kikusui_pcr500m"
+            )
+
+            self.pcr_group.setVisible(
+                is_pcr500m
+            )
+
+            self.connection_button.setVisible(
+                not is_pcr500m
+            )
+
+            self.read_button.setVisible(
+                not is_pcr500m
+            )
+
+            self.simulation_button.setVisible(
+                not is_pcr500m
+            )
+
+            self.pcr_apply_button.setEnabled(
+                False
+            )
+
+            self.pcr_read_button.setEnabled(
+                False
+            )
+
+            self.pcr_disconnect_button.setEnabled(
+                False
+            )
+
             self.loading_configuration = True
 
             self.refresh_connection_controls(catalog)
+
+            self.pcr_voltage_range_input.setCurrentIndex(
+                self.pcr_voltage_range_input.findData(270.0)
+            )
+
+            self.pcr_voltage_input.setText("230.0")
+            self.pcr_frequency_input.setText("50.0")
+
+            self.pcr_status_label.setText(
+                "Status: Not Connected"
+            )
 
             self.refresh_measurement_controls(
                 catalog_id,
@@ -1011,18 +1498,31 @@ class InstrumentConfigurationPage(QWidget):
         )
 
         self.baudrate_input.setValue(
-            int(connection.get("baudrate", 9600))
+            int(
+                connection.get(
+                    "baud_rate",
+                    connection.get("baudrate", 12900)
+                )
+            )
         )
 
         self.timeout_input.setValue(
             int(connection.get("timeout", 5000))
         )
 
-        is_serial = interface == "SERIAL"
+        is_serial = interface in ("SERIAL", "RS232C")
 
-        self.port_input.setEnabled(is_serial)
-        self.baudrate_input.setEnabled(is_serial)
-        self.resource_input.setEnabled(not is_serial)
+        self.port_input.setEnabled(
+            interface == "SERIAL"
+        )
+
+        self.baudrate_input.setEnabled(
+            is_serial
+        )
+
+        self.resource_input.setEnabled(
+            interface != "SERIAL"
+        )
 
     def mark_form_dirty(self, *args):
 
@@ -1249,10 +1749,15 @@ class InstrumentConfigurationPage(QWidget):
             "connection", {}
         )
 
-        interface = self.interface_input.currentText().upper()
+        interface = (
+            self.interface_input.currentText().upper()
+        )
 
         connection["interface"] = interface
-        connection["timeout"] = self.timeout_input.value()
+
+        connection["timeout"] = (
+            self.timeout_input.value()
+        )
 
         if interface == "SERIAL":
 
@@ -1264,6 +1769,7 @@ class InstrumentConfigurationPage(QWidget):
                 )
 
             connection["port"] = port
+
             connection["baudrate"] = (
                 self.baudrate_input.value()
             )
@@ -1280,6 +1786,12 @@ class InstrumentConfigurationPage(QWidget):
                 )
 
             connection["resource"] = resource
+
+            if interface == "RS232C":
+
+                connection["baud_rate"] = (
+                    self.baudrate_input.value()
+                )
 
             connection.pop("port", None)
             connection.pop("baudrate", None)

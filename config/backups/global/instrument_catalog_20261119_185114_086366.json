@@ -1,0 +1,91 @@
+{
+    "instruments": {
+        "kikusui_tos9302": {
+            "name": "Kikusui TOS9302",
+            "driver": "kikusui_tos9302",
+            "connection": {
+                "interface": "USB",
+                "resource": "USB0::0x0B3E::0x104F::ZC001527::INSTR",
+                "timeout": 5000,
+                "backend": "",
+                "read_termination": "\n",
+                "write_termination": "\n"
+            },
+            "commands": {
+                "identify": "*IDN?"
+            },
+            "supported_functions": [
+                "acw",
+                "ecac",
+                "ecdc"
+            ]
+        },
+        "yokogawa_wt310e": {
+            "name": "Yokogawa WT310E",
+            "driver": "generic_scpi",
+            "connection": {
+                "interface": "USB",
+                "timeout": 5000,
+                "backend": "",
+                "read_termination": "\n",
+                "write_termination": "\n",
+                "resource": "USB0::0x0B21::0x0025::43335348303130303145::INSTR"
+            },
+            "commands": {
+                "identify": "*IDN?",
+                "configure_item": ":NUMERIC:NORMAL:ITEM{item} {function},{element}",
+                "read_item": ":NUMERIC:NORMAL:VALUE? {item}"
+            },
+            "measurements": {
+                "voltage": {
+                    "name": "Voltage",
+                    "function": "U",
+                    "unit": "V"
+                },
+                "current": {
+                    "name": "Current",
+                    "function": "I",
+                    "unit": "A"
+                },
+                "active_power": {
+                    "name": "Active Power",
+                    "function": "P",
+                    "unit": "W"
+                },
+                "current_frequency": {
+                    "name": "Current Frequency",
+                    "function": "FI",
+                    "unit": "Hz"
+                },
+                "voltage_frequency": {
+                    "name": "Voltage Frequency",
+                    "function": "FU",
+                    "unit": "Hz"
+                }
+            }
+        },
+        "kikusui_pcr500m": {
+            "name": "Kikusui PCR500M",
+            "driver": "kikusui_pcr500m",
+            "connection": {
+                "interface": "RS232C",
+                "resource": "ASRL6::INSTR",
+                "timeout": 5000,
+                "backend": "",
+                "baud_rate": 19200,
+                "data_bits": 8,
+                "parity": "NONE",
+                "stop_bits": 1,
+                "flow_control": "XON_XOFF",
+                "read_termination": "\n",
+                "write_termination": "\r\n"
+            },
+            "commands": {
+                "identify": "*IDN?"
+            },
+            "supported_functions": [
+                "ac_supply_configuration"
+            ]
+        }
+    }
+}

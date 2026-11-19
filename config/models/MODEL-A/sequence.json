@@ -1,6 +1,7 @@
+
 {
     "sequence_id": "test_sequence",
-    "name": "Test Sequence",
+    "name": "Safety Test Sequence",
     "version": 1,
     "steps": [
         {
@@ -40,13 +41,29 @@
         },
         {
             "id": "step_004",
-            "type": "instrument_measurement",
-            "name": "WT310E Live Measurement",
+            "type": "instrument_test",
+            "name": "AC Hipot Test",
             "enabled": true,
             "parameters": {
-                "instrument": "wt310e",
-                "duration_s": 10,
-                "sample_interval_s": 1
+                "instrument": "kikusui_tos9302",
+                "function": "acw"
+            }
+        },
+        {
+            "id": "step_005",
+            "type": "ac_volt_confirmation",
+            "name": "AC Volt Confirmation",
+            "enabled": true,
+            "parameters": {
+                "power_supply": "kikusui_pcr500m",
+                "power_meter": "wt310e",
+                "measurements": [
+                    "voltage",
+                    "current",
+                    "active_power",
+                    "current_frequency",
+                    "voltage_frequency"
+                ]
             }
         }
     ]

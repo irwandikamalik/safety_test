@@ -285,6 +285,97 @@ class InstrumentManager:
 
         return instrument.read_measurements(parameters)
 
+    def configure_instrument(
+        self,
+        instrument_id,
+        parameters
+    ):
+
+        instrument = self.get_instrument(
+            instrument_id
+        )
+
+        configure_method = getattr(
+            instrument,
+            "configure",
+            None
+        )
+
+        if not callable(configure_method):
+            raise NotImplementedError(
+                f"Configuration is not supported by: {instrument_id}"
+            )
+
+        return configure_method(parameters)
+
+
+    def output_on(
+        self,
+        instrument_id,
+        safety_approved=False
+    ):
+
+        instrument = self.get_instrument(
+            instrument_id
+        )
+
+        output_on_method = getattr(
+            instrument,
+            "output_on",
+            None
+        )
+
+        if not callable(output_on_method):
+            raise NotImplementedError(
+                f"Output ON is not supported by: {instrument_id}"
+            )
+
+        return output_on_method(
+            safety_approved=safety_approved
+        )
+
+    def output_off(self, instrument_id):
+
+        instrument = self.get_instrument(
+            instrument_id
+        )
+
+        output_off_method = getattr(
+            instrument,
+            "output_off",
+            None
+        )
+
+        if not callable(output_off_method):
+            raise NotImplementedError(
+                f"Output OFF is not supported by: {instrument_id}"
+            )
+
+        return output_off_method()
+
+
+    def read_instrument_configuration(
+        self,
+        instrument_id
+    ):
+
+        instrument = self.get_instrument(
+            instrument_id
+        )
+
+        read_method = getattr(
+            instrument,
+            "read_configuration",
+            None
+        )
+
+        if not callable(read_method):
+            raise NotImplementedError(
+                f"Configuration reading is not supported by: {instrument_id}"
+            )
+
+        return read_method()
+
     def available_instruments(self):
 
         return list(self.instruments.keys())

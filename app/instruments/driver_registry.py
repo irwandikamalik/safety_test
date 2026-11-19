@@ -11,6 +11,10 @@ from app.instruments.kikusui_tos9302_instrument import (
     KikusuiTOS9302Instrument
 )
 
+from app.instruments.kikusui_pcr500m_instrument import (
+    KikusuiPCR500MInstrument
+)
+
 
 class DriverRegistry:
 
@@ -31,6 +35,11 @@ class DriverRegistry:
         self.register(
             "kikusui_tos9302",
             KikusuiTOS9302Instrument
+        )
+
+        self.register(
+            "kikusui_pcr500m",
+            KikusuiPCR500MInstrument
         )
 
     def register(self, driver_id, driver_class):

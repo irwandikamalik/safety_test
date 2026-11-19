@@ -1,6 +1,3 @@
-from app.workflows.instrument_measurement_step import (
-    InstrumentMeasurementStep
-)
 
 from PySide6.QtCore import QObject, Signal, QTimer
 
@@ -9,11 +6,16 @@ from app.core.step_registry import StepRegistry
 
 from app.workflows.base_step import StepOutcome
 from app.workflows.instrument_test_step import InstrumentTestStep
+from app.workflows.instrument_measurement_step import InstrumentMeasurementStep
 
 from app.instruments.instrument_manager import InstrumentManager
+from app.instruments.measurement_worker import MeasurementWorker
+from app.instruments.ac_volt_confirmation_worker import (
+    ACVoltConfirmationWorker
+)
+
 from app.database.database_manager import DatabaseManager
 from app.services.logging_service import LoggingService
-from app.instruments.measurement_worker import MeasurementWorker
 
 
 class WorkflowEngine(QObject):
@@ -27,11 +29,18 @@ class WorkflowEngine(QObject):
 
     finished = Signal()
     failed = Signal(str)
+    aborted = Signal(str)
 
     measurement_sample = Signal(dict, int, float, bool)
     measurement_completed = Signal(dict)
     measurement_failed = Signal(str)
 
+    ac_volt_status_changed = Signal(str)
+    ac_volt_configuration_ready = Signal(dict)
+    ac_volt_sample_received = Signal(dict, int, float, bool)
+    ac_volt_evaluation_passed = Signal(dict)
+    ac_volt_completed = Signal(dict)
+    ac_volt_failed = Signal(str)
 
     def __init__(
         self,
@@ -45,27 +54,11 @@ class WorkflowEngine(QObject):
 
         self.model_configuration = model_configuration
 
-        # --------------------------------------
-        # MODEL CONFIGURATION
-        # --------------------------------------
-
         self.model = model_configuration["model"]
-
-        self.sequence_configuration = (
-            model_configuration["sequence"]
-        )
-
-        self.parameter_configuration = (
-            model_configuration["parameters"]
-        )
-
-        self.application_configuration = (
-            model_configuration["application"]
-        )
-
-        self.instrument_catalog = (
-            model_configuration["instrument_catalog"]
-        )
+        self.sequence_configuration = model_configuration["sequence"]
+        self.parameter_configuration = model_configuration["parameters"]
+        self.application_configuration = model_configuration["application"]
+        self.instrument_catalog = model_configuration["instrument_catalog"]
 
         self.application_mode = (
             self.application_configuration.get(
@@ -74,29 +67,19 @@ class WorkflowEngine(QObject):
             )
         )
 
-        # --------------------------------------
-        # WORKFLOW CONTEXT
-        # --------------------------------------
-
         initial_data = dict(initial_data or {})
 
         initial_data.update({
             "model_id": self.model.get("model_id"),
             "model_name": self.model.get("model_name"),
-            "sequence_id": (
-                self.sequence_configuration.get("sequence_id")
-            ),
-            "application_mode": self.application_mode,
+            "sequence_id": self.sequence_configuration.get("sequence_id"),
+            "application_mode": self.application_mode
         })
 
         self.context = WorkflowContext(
             operator,
             initial_data
         )
-
-        # --------------------------------------
-        # REGISTRIES AND SERVICES
-        # --------------------------------------
 
         self.registry = StepRegistry()
 
@@ -109,14 +92,7 @@ class WorkflowEngine(QObject):
         self.database = DatabaseManager()
         self.logger = LoggingService()
 
-        # --------------------------------------
-        # SEQUENCE
-        # --------------------------------------
-
-        self.steps = self.sequence_configuration.get(
-            "steps",
-            []
-        )
+        self.steps = self.sequence_configuration.get("steps", [])
 
         self.index = 0
         self.current_step = None
@@ -124,18 +100,21 @@ class WorkflowEngine(QObject):
 
         self.running = False
         self.waiting = False
+
         self.measurement_workers = []
+
+        self.ac_volt_worker = None
+        self.ac_volt_abort_requested = False
+
+        self.stop_after_interaction = False
+        self.result_saved = False
 
         self.timer = QTimer(self)
         self.timer.setSingleShot(True)
-
-        self.timer.timeout.connect(
-            self.execute_next
-        )
+        self.timer.timeout.connect(self.execute_next)
 
     @property
     def is_running(self):
-
         return self.running
 
     # ==========================================
@@ -148,14 +127,16 @@ class WorkflowEngine(QObject):
             return
 
         if not self.steps:
-            self.failed.emit(
-                "Sequence has no steps."
-            )
+            self.failed.emit("Sequence has no steps.")
             return
 
         self.index = 0
         self.running = True
         self.waiting = False
+
+        self.result_saved = False
+        self.stop_after_interaction = False
+        self.ac_volt_abort_requested = False
 
         self.log(
             "SYSTEM",
@@ -166,13 +147,73 @@ class WorkflowEngine(QObject):
 
     def log(self, category, message):
 
-        self.log_message.emit(
-            category,
-            message
-        )
+        self.log_message.emit(category, message)
 
         self.logger.info(
             f"[{category}] {message}"
+        )
+
+    # ==========================================
+    # RESULT MANAGEMENT
+    # ==========================================
+
+    def store_measurement_result(self, step_id, result):
+
+        measurements = self.context.get("measurements", {})
+
+        measurements[step_id] = result
+
+        self.context.set("measurements", measurements)
+
+    def update_judgment(self, step_id, judgment):
+
+        test_judgments = self.context.get(
+            "test_judgments",
+            {}
+        )
+
+        test_judgments[step_id] = judgment
+
+        self.context.set(
+            "test_judgments",
+            test_judgments
+        )
+
+        normalized = [
+            str(value).upper()
+            for value in test_judgments.values()
+        ]
+
+        if any(value in ("FAIL", "NG") for value in normalized):
+            overall = "FAIL"
+
+        elif normalized and all(value == "PASS" for value in normalized):
+            overall = "PASS"
+
+        else:
+            overall = None
+
+        self.context.set("judgment", overall)
+
+        return overall
+
+    def save_result(self, judgment=None):
+
+        if self.result_saved:
+            return
+
+        if judgment is not None:
+            self.context.set("judgment", judgment)
+
+        self.database.save_result(
+            self.context.as_dict()
+        )
+
+        self.result_saved = True
+
+        self.log(
+            "DATABASE",
+            "Test result saved."
         )
 
     # ==========================================
@@ -185,7 +226,6 @@ class WorkflowEngine(QObject):
             return
 
         if self.index >= len(self.steps):
-
             self.complete_workflow()
             return
 
@@ -195,22 +235,20 @@ class WorkflowEngine(QObject):
 
             self.log(
                 "SYSTEM",
-                f"Skipping disabled step: "
-                f"{configuration.get('name')}"
+                f"Skipping disabled step: {configuration.get('name')}"
             )
 
             self.index += 1
             self.timer.start(0)
-
             return
 
         try:
 
             self.current_configuration = configuration
 
-            self.current_step = self.registry.create(
-                configuration
-            )
+            self.current_step = self.registry.create(configuration)
+
+            self.stop_after_interaction = False
 
             name = configuration.get(
                 "name",
@@ -225,22 +263,17 @@ class WorkflowEngine(QObject):
 
             self.log("STEP", name)
 
-            if isinstance(
-                self.current_step,
-                InstrumentTestStep
-            ):
+            if isinstance(self.current_step, InstrumentTestStep):
 
                 outcome = self.execute_instrument_test()
 
-            elif isinstance(
-                self.current_step,
-                InstrumentMeasurementStep
-            ):
+            elif isinstance(self.current_step, InstrumentMeasurementStep):
 
                 self.execute_instrument_measurement()
                 return
 
             else:
+
                 outcome = self.current_step.execute(
                     self.context
                 )
@@ -254,7 +287,6 @@ class WorkflowEngine(QObject):
     # ==========================================
     # INSTRUMENT TEST EXECUTION
     # ==========================================
-
 
     def execute_instrument_test(self):
 
@@ -271,10 +303,6 @@ class WorkflowEngine(QObject):
                 "Instrument ID or function is missing."
             )
 
-        # --------------------------------------
-        # HARDWARE SAFETY VALIDATION
-        # --------------------------------------
-
         if self.application_mode == "HARDWARE":
 
             if (
@@ -290,10 +318,6 @@ class WorkflowEngine(QObject):
                     "Test configuration has not been approved."
                 )
 
-        # --------------------------------------
-        # LOAD MODEL TEST PARAMETERS
-        # --------------------------------------
-
         test_parameter_groups = (
             self.parameter_configuration.get(
                 "test_parameters",
@@ -301,13 +325,11 @@ class WorkflowEngine(QObject):
             )
         )
 
-        function_groups = {
+        parameter_group = {
             "acw": "acw",
             "ecac": "ecac",
             "ecdc": "ecdc"
-        }
-
-        parameter_group = function_groups.get(function)
+        }.get(function)
 
         if parameter_group is None:
             raise ValueError(
@@ -315,10 +337,7 @@ class WorkflowEngine(QObject):
             )
 
         test_parameters = dict(
-            self.parameter_configuration.get(
-                "limits",
-                {}
-            )
+            self.parameter_configuration.get("limits", {})
         )
 
         configured_parameters = test_parameter_groups.get(
@@ -333,7 +352,6 @@ class WorkflowEngine(QObject):
 
         test_parameters.update(configured_parameters)
 
-        # Allow explicit step-level overrides.
         step_parameters = parameters.get(
             "test_parameters",
             {}
@@ -346,23 +364,16 @@ class WorkflowEngine(QObject):
 
         test_parameters.update(step_parameters)
 
-        # --------------------------------------
-        # CONNECT AND EXECUTE
-        # --------------------------------------
-
         self.log(
             "INSTRUMENT",
-            f"{self.application_mode}: connecting "
-            f"{instrument_id}"
+            f"{self.application_mode}: connecting {instrument_id}"
         )
 
         connected = False
 
         try:
 
-            connected = self.instrument_manager.connect(
-                instrument_id
-            )
+            connected = self.instrument_manager.connect(instrument_id)
 
             if connected is False:
                 raise RuntimeError(
@@ -378,82 +389,45 @@ class WorkflowEngine(QObject):
         finally:
 
             if connected:
-                self.instrument_manager.disconnect(
-                    instrument_id
-                )
+                self.instrument_manager.disconnect(instrument_id)
 
         if not isinstance(result, dict):
             raise TypeError(
                 "Instrument test result must be a dictionary."
             )
 
-        if result.get("simulation") is not True:
-            if self.application_mode == "SIMULATION":
-                raise RuntimeError(
-                    "Simulation mode received a non-simulation result."
-                )
-
-        # --------------------------------------
-        # STORE INDIVIDUAL TEST RESULT
-        # --------------------------------------
-
-        measurements = self.context.get(
-            "measurements",
-            {}
-        )
+        if (
+            result.get("simulation") is not True
+            and self.application_mode == "SIMULATION"
+        ):
+            raise RuntimeError(
+                "Simulation mode received a non-simulation result."
+            )
 
         step_id = self.current_configuration.get(
             "id",
             f"step_{self.index + 1}"
         )
 
-        measurements[step_id] = result
+        judgment = str(
+            result.get("judgment", "")
+        ).upper()
 
-        self.context.set(
-            "measurements",
-            measurements
-        )
+        if judgment not in ("PASS", "FAIL", "NG"):
+            raise ValueError(
+                f"Invalid instrument test judgment: {judgment}"
+            )
 
-        # --------------------------------------
-        # AGGREGATE TEST JUDGMENT
-        # --------------------------------------
+        self.store_measurement_result(step_id, result)
 
-        test_judgments = self.context.get(
-            "test_judgments",
-            {}
-        )
-
-        test_judgments[step_id] = result.get(
-            "judgment"
-        )
-
-        self.context.set(
-            "test_judgments",
-            test_judgments
-        )
-
-        judgments = list(test_judgments.values())
-
-        if "FAIL" in judgments:
-            overall_judgment = "FAIL"
-
-        elif judgments and all(
-            judgment == "PASS"
-            for judgment in judgments
-        ):
-            overall_judgment = "PASS"
-
-        else:
-            overall_judgment = None
-
-        self.context.set(
-            "judgment",
-            overall_judgment
+        overall_judgment = self.update_judgment(
+            step_id,
+            judgment
         )
 
         self.log(
             "MEASUREMENT",
-            f"{function}: {result.get('judgment')}"
+            f"{function}: {judgment}"
         )
 
         self.log(
@@ -461,9 +435,12 @@ class WorkflowEngine(QObject):
             f"Overall judgment: {overall_judgment}"
         )
 
+        if judgment in ("FAIL", "NG"):
+            self.stop_after_interaction = True
+
         return StepOutcome(
             success=True,
-            message=f"{function} test completed.",
+            message=f"{function} test completed: {judgment}.",
             interaction={
                 "type": "measurement",
                 "result": result
@@ -477,7 +454,10 @@ class WorkflowEngine(QObject):
 
     def execute_instrument_measurement(self):
 
-        parameters = self.current_configuration.get("parameters", {})
+        parameters = self.current_configuration.get(
+            "parameters",
+            {}
+        )
 
         instrument_id = parameters.get("instrument")
 
@@ -485,15 +465,17 @@ class WorkflowEngine(QObject):
             raise ValueError("Instrument ID is required.")
 
         duration_s = float(parameters.get("duration_s", 10))
-        sample_interval_s = float(parameters.get("sample_interval_s", 1))
+        sample_interval_s = float(
+            parameters.get("sample_interval_s", 1)
+        )
 
         measurement_ids = parameters.get("measurements")
 
-        if duration_s <= 0:
-            raise ValueError("Measurement duration must be greater than zero.")
-
-        if sample_interval_s <= 0:
-            raise ValueError("Sample interval must be greater than zero.")
+        if duration_s <= 0 or sample_interval_s <= 0:
+            raise ValueError(
+                "Measurement duration and sample interval "
+                "must be greater than zero."
+            )
 
         self.log(
             "INFO",
@@ -512,7 +494,6 @@ class WorkflowEngine(QObject):
 
         self.measurement_workers.append(worker)
 
-        # Connect worker signals.
         worker.sample_received.connect(
             self.measurement_sample.emit
         )
@@ -529,10 +510,8 @@ class WorkflowEngine(QObject):
             lambda w=worker: self.cleanup_measurement_worker(w)
         )
 
-        # Start worker first, before opening the modal dialog.
         QTimer.singleShot(0, worker.start)
 
-        # Then request Dashboard to open the live measurement dialog.
         self.interaction_requested.emit({
             "type": "live_measurement",
             "instrument": instrument_id,
@@ -540,33 +519,19 @@ class WorkflowEngine(QObject):
             "sample_interval_s": sample_interval_s
         })
 
-
     def on_instrument_measurement_completed(self, result):
 
         if not self.running:
             return
-
-        measurements = self.context.get(
-            "measurements",
-            {}
-        )
 
         step_id = self.current_configuration.get(
             "id",
             f"step_{self.index + 1}"
         )
 
-        measurements[step_id] = result
+        self.store_measurement_result(step_id, result)
 
-        self.context.set(
-            "measurements",
-            measurements
-        )
-
-        measured_values = result.get(
-            "measurements",
-            {}
-        )
+        measured_values = result.get("measurements", {})
 
         for measurement_id, measurement in measured_values.items():
 
@@ -588,14 +553,10 @@ class WorkflowEngine(QObject):
         self.finish_current_step(
             StepOutcome(
                 success=True,
-                message=(
-                    f"Measurement completed: "
-                    f"{result.get('instrument')}"
-                ),
+                message=f"Measurement completed: {result.get('instrument')}",
                 data=result
             )
         )
-
 
     def on_instrument_measurement_failed(self, message):
 
@@ -605,14 +566,276 @@ class WorkflowEngine(QObject):
         self.measurement_failed.emit(message)
         self.fail(message)
 
-
     def cleanup_measurement_worker(self, worker):
 
         if worker in self.measurement_workers:
             self.measurement_workers.remove(worker)
 
         worker.deleteLater()
-        
+
+    # ==========================================
+    # AC VOLT CONFIRMATION
+    # ==========================================
+
+    def start_ac_volt_confirmation(self, parameters):
+
+        if not self.running or not self.waiting:
+            return
+
+        if self.ac_volt_worker is not None:
+            raise RuntimeError(
+                "AC Volt Confirmation worker is already active."
+            )
+
+        parameters = dict(parameters or {})
+
+        power_supply_id = parameters.get("power_supply")
+        power_meter_id = parameters.get("power_meter")
+
+        if not power_supply_id or not power_meter_id:
+            raise ValueError(
+                "AC Volt Confirmation instrument IDs are missing."
+            )
+
+        if self.application_mode == "HARDWARE":
+
+            if (
+                self.parameter_configuration.get(
+                    "configuration_status"
+                ) != "APPROVED"
+                or self.parameter_configuration.get(
+                    "hardware_approved"
+                ) is not True
+            ):
+                raise RuntimeError(
+                    "Hardware AC Volt Confirmation is blocked. "
+                    "Test configuration has not been approved."
+                )
+
+        test_parameters = (
+            self.parameter_configuration
+            .get("test_parameters", {})
+            .get("ac_volt_confirmation", {})
+        )
+
+        power_supply_parameters = test_parameters.get(
+            "power_supply",
+            {}
+        )
+
+        limits = self.parameter_configuration.get(
+            "limits",
+            {}
+        )
+
+        duration_s = float(
+            test_parameters.get("evaluation_duration_s", 10)
+        )
+
+        sample_interval_s = float(
+            test_parameters.get("sample_interval_s", 1)
+        )
+
+        voltage_min_V = float(
+            limits["input_voltage_min_V"]
+        )
+
+        voltage_max_V = float(
+            limits["input_voltage_max_V"]
+        )
+
+        measurement_ids = parameters.get(
+            "measurements",
+            ["voltage", "current"]
+        )
+
+        worker = ACVoltConfirmationWorker(
+            instrument_manager=self.instrument_manager,
+            power_supply_id=power_supply_id,
+            power_meter_id=power_meter_id,
+            power_supply_parameters=power_supply_parameters,
+            evaluation_duration_s=duration_s,
+            sample_interval_s=sample_interval_s,
+            voltage_min_V=voltage_min_V,
+            voltage_max_V=voltage_max_V,
+            measurement_ids=measurement_ids
+        )
+
+        self.ac_volt_worker = worker
+        self.ac_volt_abort_requested = False
+
+        worker.status_changed.connect(
+            self.ac_volt_status_changed.emit
+        )
+
+        worker.configuration_ready.connect(
+            self.ac_volt_configuration_ready.emit
+        )
+
+        worker.sample_received.connect(
+            self.ac_volt_sample_received.emit
+        )
+
+        worker.evaluation_passed.connect(
+            self.on_ac_volt_evaluation_passed
+        )
+
+        worker.completed.connect(
+            self.on_ac_volt_completed
+        )
+
+        worker.failed.connect(
+            self.on_ac_volt_failed
+        )
+
+        worker.finished.connect(
+            lambda w=worker: self.cleanup_ac_volt_worker(w)
+        )
+
+        self.log(
+            "INSTRUMENT",
+            "Starting AC Volt Confirmation."
+        )
+
+        QTimer.singleShot(0, worker.start)
+
+    def approve_ac_volt_output(self):
+
+        if self.ac_volt_worker is None:
+            return
+
+        self.ac_volt_worker.approve_output()
+
+    def confirm_ac_volt_pass(self):
+
+        if self.ac_volt_worker is None:
+            return
+
+        self.ac_volt_worker.confirm_pass()
+
+    def cancel_ac_volt_confirmation(self):
+
+        if self.ac_volt_worker is None:
+            return
+
+        self.ac_volt_abort_requested = True
+
+        self.log(
+            "ABORT",
+            "AC Volt Confirmation cancellation requested. "
+            "Waiting for safe shutdown."
+        )
+
+        self.ac_volt_worker.request_stop()
+
+    def on_ac_volt_evaluation_passed(self, result):
+
+        self.log(
+            "JUDGMENT",
+            "AC Volt Confirmation evaluation: PASS. "
+            "PCR500M output remains ON until operator confirmation."
+        )
+
+        self.ac_volt_evaluation_passed.emit(result)
+
+    def on_ac_volt_completed(self, result):
+
+        if not self.running:
+            return
+
+        step_id = self.current_configuration.get(
+            "id",
+            f"step_{self.index + 1}"
+        )
+
+        self.store_measurement_result(step_id, result)
+
+        judgment = str(
+            result.get("judgment", "")
+        ).upper()
+
+        if judgment not in ("PASS", "FAIL", "NG"):
+            self.fail(
+                f"Invalid AC Volt Confirmation judgment: {judgment}"
+            )
+            return
+
+        overall_judgment = self.update_judgment(
+            step_id,
+            judgment
+        )
+
+        self.log(
+            "MEASUREMENT",
+            f"AC Volt Confirmation: {judgment}"
+        )
+
+        self.ac_volt_completed.emit(result)
+
+        if judgment in ("FAIL", "NG"):
+
+            self.log(
+                "JUDGMENT",
+                "AC Volt Confirmation NG. Workflow stopped."
+            )
+
+            try:
+                self.save_result("FAIL")
+            except Exception as error:
+                self.fail(
+                    f"NG result database save failed: {error}"
+                )
+                return
+
+            self.fail(
+                "AC Volt Confirmation NG. "
+                "Input voltage is outside the configured limits."
+            )
+            return
+
+        self.waiting = False
+
+        self.finish_current_step(
+            StepOutcome(
+                success=True,
+                message="AC Volt Confirmation PASS.",
+                data=result
+            )
+        )
+
+    def on_ac_volt_failed(self, message):
+
+        self.ac_volt_failed.emit(message)
+
+        if self.ac_volt_abort_requested:
+
+            self.timer.stop()
+            self.running = False
+            self.waiting = False
+
+            self.log(
+                "ABORT",
+                "AC Volt Confirmation cancelled. "
+                "Worker safe shutdown has completed."
+            )
+
+            self.aborted.emit(
+                "Workflow aborted by operator."
+            )
+
+            return
+
+        self.fail(
+            f"AC Volt Confirmation error: {message}"
+        )
+
+    def cleanup_ac_volt_worker(self, worker):
+
+        if self.ac_volt_worker is worker:
+            self.ac_volt_worker = None
+
+        worker.deleteLater()
+
     # ==========================================
     # INTERACTION HANDLING
     # ==========================================
@@ -620,13 +843,11 @@ class WorkflowEngine(QObject):
     def process_outcome(self, outcome):
 
         if not isinstance(outcome, StepOutcome):
-
             raise TypeError(
                 "Step must return StepOutcome."
             )
 
         if not outcome.success:
-
             self.fail(outcome.message)
             return
 
@@ -657,8 +878,22 @@ class WorkflowEngine(QObject):
             self.waiting = False
 
             if not outcome.success:
-
                 self.fail(outcome.message)
+                return
+
+            if self.stop_after_interaction:
+
+                try:
+                    self.save_result("FAIL")
+                except Exception as error:
+                    self.fail(
+                        f"NG result database save failed: {error}"
+                    )
+                    return
+
+                self.fail(
+                    "Instrument test NG. Workflow stopped."
+                )
                 return
 
             self.finish_current_step(outcome)
@@ -695,14 +930,12 @@ class WorkflowEngine(QObject):
 
         try:
 
-            self.database.save_result(
-                self.context.as_dict()
-            )
+            judgment = self.context.get("judgment")
 
-            self.log(
-                "DATABASE",
-                "Test result saved."
-            )
+            if judgment is None:
+                judgment = "PASS"
+
+            self.save_result(judgment)
 
             self.running = False
             self.waiting = False
@@ -742,14 +975,23 @@ class WorkflowEngine(QObject):
 
         self.timer.stop()
 
+        # AC Volt Confirmation must finish safe shutdown first.
+        if self.ac_volt_worker is not None:
+
+            self.cancel_ac_volt_confirmation()
+            return
+
         self.running = False
         self.waiting = False
 
-        # Request background measurement workers to stop.
         for worker in self.measurement_workers:
             worker.request_stop()
 
         self.log(
             "ABORT",
+            "Workflow aborted by operator."
+        )
+
+        self.aborted.emit(
             "Workflow aborted by operator."
         )

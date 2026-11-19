@@ -9,6 +9,9 @@ from app.workflows.instrument_test_step import InstrumentTestStep
 from app.workflows.instrument_measurement_step import (
     InstrumentMeasurementStep
 )
+from app.workflows.ac_volt_confirmation_step import (
+    ACVoltConfirmationStep
+)
 
 
 class StepRegistry:
@@ -22,6 +25,7 @@ class StepRegistry:
         self.register(ApprovalStep)
         self.register(InstrumentTestStep)
         self.register(InstrumentMeasurementStep)
+        self.register(ACVoltConfirmationStep)
 
     def register(self, step_class):
 

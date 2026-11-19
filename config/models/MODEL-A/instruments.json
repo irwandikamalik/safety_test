@@ -24,6 +24,15 @@
                 ],
                 "element": 1
             }
+        },
+        "kikusui_pcr500m": {
+            "catalog_id": "kikusui_pcr500m",
+            "enabled": true,
+            "overrides": {
+                "selected_functions": [
+                    "ac_supply_configuration"
+                ]
+            }
         }
     }
 }

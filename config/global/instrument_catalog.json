@@ -63,6 +63,29 @@
                     "unit": "Hz"
                 }
             }
+        },
+        "kikusui_pcr500m": {
+            "name": "Kikusui PCR500M",
+            "driver": "kikusui_pcr500m",
+            "connection": {
+                "interface": "RS232C",
+                "resource": "ASRL6::INSTR",
+                "timeout": 5000,
+                "backend": "",
+                "baud_rate": 19200,
+                "data_bits": 8,
+                "parity": "NONE",
+                "stop_bits": 1,
+                "flow_control": "XON_XOFF",
+                "read_termination": "\n",
+                "write_termination": "\r\n"
+            },
+            "commands": {
+                "identify": "*IDN?"
+            },
+            "supported_functions": [
+                "ac_supply_configuration"
+            ]
         }
     }
 }

@@ -3,19 +3,36 @@ from app.instruments.base_instrument import BaseInstrument
 
 class SimulationInstrument(BaseInstrument):
 
+    _shared_configuration_states = {}
+
     def __init__(self, configuration):
 
         self.configuration = configuration
         self.connected = False
+        self.configuration_state = {}
 
     def connect(self):
 
         self.connected = True
         return True
 
+
     def disconnect(self):
 
+        catalog_id = self.configuration.get(
+            "catalog_id", ""
+        )
+
+        if catalog_id == "kikusui_pcr500m":
+
+            state_key = self._get_configuration_state_key()
+
+            if state_key in self._shared_configuration_states:
+
+                self.output_off()
+
         self.connected = False
+
 
     def execute_test(self, function, parameters):
 
@@ -249,6 +266,246 @@ class SimulationInstrument(BaseInstrument):
             result["frequency_Hz"] = float(frequency)
 
         return result
+
+    def _get_configuration_state_key(self):
+
+        connection = self.configuration.get(
+            "connection", {}
+        )
+
+        resource = connection.get(
+            "resource",
+            connection.get("port", "default")
+        )
+
+        driver = self.configuration.get(
+            "driver",
+            "simulation"
+        )
+
+        name = self.configuration.get(
+            "name",
+            "Simulation Instrument"
+        )
+
+        return f"{driver}:{name}:{resource}"
+
+    # ==================================================
+    # SIMULATED AC POWER SUPPLY CONFIGURATION
+    # ==================================================
+
+    def configure(self, parameters):
+
+        if not self.connected:
+            raise RuntimeError(
+                "Simulation instrument is not connected."
+            )
+
+        if not isinstance(parameters, dict):
+            raise ValueError(
+                "Configuration must be a dictionary."
+            )
+
+        voltage_range = float(
+            parameters.get("voltage_range_V", 270)
+        )
+
+        output_voltage = float(
+            parameters.get("output_voltage_V", 230.0)
+        )
+
+        frequency = float(
+            parameters.get("frequency_Hz", 50.0)
+        )
+
+        if voltage_range != 270:
+            raise ValueError(
+                "Simulation currently supports 270 V range."
+            )
+
+        if not 0 < output_voltage <= 275:
+            raise ValueError(
+                "Invalid output voltage."
+            )
+
+        if not 40 <= frequency <= 500:
+            raise ValueError(
+                "Invalid output frequency."
+            )
+
+        self.configuration_state = {
+            "instrument": self.configuration.get(
+                "name",
+                "Simulation Instrument"
+            ),
+            "output_mode": "AC",
+            "output_status": "OFF",
+            "voltage_range_V": voltage_range,
+            "output_voltage_V": output_voltage,
+            "frequency_Hz": frequency
+        }
+
+        state_key = self._get_configuration_state_key()
+
+        self._save_configuration_state()
+
+        return {
+            **self.configuration_state,
+            "verification": {
+                "output_mode": True,
+                "voltage_range_V": True,
+                "output_voltage_V": True,
+                "frequency_Hz": True
+            },
+            "judgment": "PASS",
+            "simulation": True
+        }
+
+    def read_configuration(self):
+
+        if not self.connected:
+            raise RuntimeError(
+                "Simulation instrument is not connected."
+            )
+
+        state_key = self._get_configuration_state_key()
+
+        configuration_state = (
+            SimulationInstrument._shared_configuration_states.get(
+                state_key
+            )
+        )
+
+        if not configuration_state:
+            raise RuntimeError(
+                "PCR500M simulation has not been configured."
+            )
+
+        self.configuration_state = configuration_state.copy()
+
+        return {
+            **self.configuration_state,
+            "simulation": True
+        }
+
+
+    # ==================================================
+    # SIMULATED OUTPUT CONTROL
+    # ==================================================
+
+    def _save_configuration_state(self):
+
+        state_key = self._get_configuration_state_key()
+
+        SimulationInstrument._shared_configuration_states[
+            state_key
+        ] = self.configuration_state.copy()
+
+    def output_on(self, safety_approved=False):
+
+        if not self.connected:
+            raise RuntimeError(
+                "Simulation instrument is not connected."
+            )
+
+        if safety_approved is not True:
+            raise PermissionError(
+                "PCR500M simulation output requires "
+                "explicit safety approval."
+            )
+
+        actual = self.read_configuration()
+
+        if actual["output_status"] != "OFF":
+            raise RuntimeError(
+                "PCR500M simulation output must be OFF "
+                "before activation."
+            )
+
+        if actual["output_mode"].upper() != "AC":
+            raise RuntimeError(
+                "PCR500M simulation output mode is not AC."
+            )
+
+        voltage_range = float(
+            actual["voltage_range_V"]
+        )
+
+        output_voltage = float(
+            actual["output_voltage_V"]
+        )
+
+        frequency = float(
+            actual["frequency_Hz"]
+        )
+
+        if voltage_range != 270:
+            raise RuntimeError(
+                "PCR500M simulation requires 270 V range."
+            )
+
+        if not 0 < output_voltage <= 275:
+            raise RuntimeError(
+                "Invalid simulated output voltage."
+            )
+
+        if not 40 <= frequency <= 500:
+            raise RuntimeError(
+                "Invalid simulated output frequency."
+            )
+
+        self.configuration_state["output_status"] = "ON"
+
+        self._save_configuration_state()
+
+        result = self.read_configuration()
+
+        if result["output_status"] != "ON":
+            self.output_off()
+
+            raise RuntimeError(
+                "PCR500M simulation output ON verification failed."
+            )
+
+        return {
+            "output_status": "ON",
+            "output_voltage_V": output_voltage,
+            "frequency_Hz": frequency,
+            "judgment": "PASS",
+            "simulation": True
+        }
+
+    def output_off(self):
+
+        if not self.connected:
+            raise RuntimeError(
+                "Simulation instrument is not connected."
+            )
+
+        state_key = self._get_configuration_state_key()
+
+        if state_key not in self._shared_configuration_states:
+            return True
+
+        self.configuration_state = (
+            self._shared_configuration_states[
+                state_key
+            ].copy()
+        )
+
+        self.configuration_state["output_status"] = "OFF"
+
+        self._save_configuration_state()
+
+        result = self.read_configuration()
+
+        if result["output_status"] != "OFF":
+            raise RuntimeError(
+                "PCR500M simulation output OFF verification failed."
+            )
+
+        return True
+
 
     # ==================================================
     # LIVE MEASUREMENT SIMULATION

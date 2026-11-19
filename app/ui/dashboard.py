@@ -29,7 +29,8 @@ from app.ui.dialogs import (
     InputDialog,
     ApprovalDialog,
     MeasurementDialog,
-    LiveMeasurementDialog
+    LiveMeasurementDialog,
+    ACVoltConfirmationDialog
 )
 
 
@@ -283,6 +284,93 @@ class DashboardPage(QWidget):
 
         root.addWidget(splitter, 1)
 
+
+    # ==========================================
+    # AC VOLT CONFIRMATION
+    # ==========================================
+
+    def handle_ac_volt_confirmation(self, request):
+
+        parameters = request.get("parameters", {})
+
+        dialog = ACVoltConfirmationDialog(
+            evaluation_duration_s=parameters.get(
+                "evaluation_duration_s", 10
+            ),
+            sample_interval_s=parameters.get(
+                "sample_interval_s", 1
+            ),
+            parent=self
+        )
+
+        engine = self.engine
+
+        # Operator approval
+        dialog.enable_output_requested.connect(
+            engine.approve_ac_volt_output
+        )
+
+        dialog.pass_confirmation_requested.connect(
+            engine.confirm_ac_volt_pass
+        )
+
+        dialog.cancel_requested.connect(
+            engine.cancel_ac_volt_confirmation
+        )
+
+        # Worker status
+        engine.ac_volt_status_changed.connect(
+            dialog.update_status
+        )
+
+        engine.ac_volt_configuration_ready.connect(
+            dialog.configuration_ready
+        )
+
+        engine.ac_volt_sample_received.connect(
+            dialog.update_measurement
+        )
+
+        engine.ac_volt_evaluation_passed.connect(
+            dialog.show_pass
+        )
+
+        engine.ac_volt_completed.connect(
+            dialog.finish_confirmation
+        )
+
+        engine.ac_volt_failed.connect(
+            dialog.show_error
+        )
+
+        try:
+
+            engine.start_ac_volt_confirmation(
+                parameters
+            )
+
+            dialog.exec()
+
+        finally:
+
+            # Disconnect dialog-specific signals
+            connections = [
+                (dialog.enable_output_requested, engine.approve_ac_volt_output),
+                (dialog.pass_confirmation_requested, engine.confirm_ac_volt_pass),
+                (dialog.cancel_requested, engine.cancel_ac_volt_confirmation),
+                (engine.ac_volt_status_changed, dialog.update_status),
+                (engine.ac_volt_configuration_ready, dialog.configuration_ready),
+                (engine.ac_volt_sample_received, dialog.update_measurement),
+                (engine.ac_volt_evaluation_passed, dialog.show_pass),
+                (engine.ac_volt_completed, dialog.finish_confirmation),
+                (engine.ac_volt_failed, dialog.show_error),
+            ]
+
+            for signal, slot in connections:
+                try:
+                    signal.disconnect(slot)
+                except (RuntimeError, TypeError):
+                    pass
 
     # ==========================================
     # SERIAL NUMBER MODEL DETECTION
@@ -703,6 +791,10 @@ class DashboardPage(QWidget):
                 self.workflow_failed
             )
 
+            self.engine.aborted.connect(
+                self.workflow_aborted
+            )
+
             self.start_button.setEnabled(False)
             self.abort_button.setEnabled(True)
             
@@ -890,6 +982,10 @@ class DashboardPage(QWidget):
                     self.abort_sequence
                 )
 
+        elif interaction_type == "ac_volt_confirmation":
+
+            self.handle_ac_volt_confirmation(request)
+        
         else:
 
             self.workflow_failed(
@@ -925,10 +1021,20 @@ class DashboardPage(QWidget):
 
         self.add_log(
             "ABORT",
-            "Sequence aborted by operator."
+            "Abort requested. Waiting for safe shutdown..."
         )
 
+        self.start_button.setEnabled(False)
+        self.abort_button.setEnabled(False)
+
+        self.serial_input.setEnabled(False)
+        self.detect_model_button.setEnabled(False)
+
         self.engine.stop()
+
+    def workflow_aborted(self, message):
+
+        self.add_log("ABORT", message)
 
         self.start_button.setEnabled(True)
         self.abort_button.setEnabled(False)
@@ -1016,19 +1122,3 @@ class DashboardPage(QWidget):
         )
 
         QTimer.singleShot(0, self.serial_input.setFocus)
-
-    def workflow_failed(self, message):
-
-        self.add_log("ERROR", message)
-
-        self.start_button.setEnabled(True)
-        self.abort_button.setEnabled(False)
-
-        self.serial_input.setEnabled(True)
-        self.detect_model_button.setEnabled(True)
-
-        QMessageBox.critical(
-            self,
-            "Workflow Failed",
-            message
-        )
