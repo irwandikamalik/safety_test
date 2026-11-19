@@ -4,7 +4,7 @@ import pyvisa
 from app.instruments.base_instrument import BaseInstrument
 
 
-class KikusuiTOS9300Instrument(BaseInstrument):
+class KikusuiTOS9302Instrument(BaseInstrument):
 
     def __init__(self, configuration):
 

@@ -2,7 +2,7 @@
     "instruments": {
         "kikusui_tos9302": {
             "name": "Kikusui TOS9302",
-            "driver": "kikusui_tos9300",
+            "driver": "kikusui_tos9302",
             "connection": {
                 "interface": "USB",
                 "resource": "USB0::0x0B3E::0x104F::ZC001527::INSTR",
@@ -15,8 +15,9 @@
                 "identify": "*IDN?"
             },
             "supported_functions": [
-                "ac_withstanding",
-                "ground_bond"
+                "acw",
+                "ecac",
+                "ecdc"
             ]
         },
         "yokogawa_wt310e": {

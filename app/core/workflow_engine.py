@@ -302,8 +302,9 @@ class WorkflowEngine(QObject):
         )
 
         function_groups = {
-            "ac_withstanding": "ac_hipot",
-            "ground_bond": "ground_bond"
+            "acw": "acw",
+            "ecac": "ecac",
+            "ecdc": "ecdc"
         }
 
         parameter_group = function_groups.get(function)

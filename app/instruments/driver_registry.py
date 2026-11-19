@@ -7,8 +7,8 @@ from app.instruments.generic_scpi_instrument import (
     GenericSCPIInstrument
 )
 
-from app.instruments.kikusui_tos9300_instrument import (
-    KikusuiTOS9300Instrument
+from app.instruments.kikusui_tos9302_instrument import (
+    KikusuiTOS9302Instrument
 )
 
 
@@ -29,8 +29,8 @@ class DriverRegistry:
         )
 
         self.register(
-            "kikusui_tos9300",
-            KikusuiTOS9300Instrument
+            "kikusui_tos9302",
+            KikusuiTOS9302Instrument
         )
 
     def register(self, driver_id, driver_class):

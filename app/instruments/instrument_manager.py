@@ -8,17 +8,12 @@ class InstrumentManager:
         self,
         model_configuration,
         instrument_catalog,
-        application_configuration,
-        hardware_measurement_ids=None
+        application_configuration
     ):
 
         self.model_configuration = model_configuration
         self.instrument_catalog = instrument_catalog
         self.application_configuration = application_configuration
-
-        self.hardware_measurement_ids = set(
-            hardware_measurement_ids or []
-        )
 
         self.registry = DriverRegistry()
         self.instruments = {}
@@ -76,7 +71,6 @@ class InstrumentManager:
         print("\n========== INSTRUMENT MANAGER DEBUG ==========")
         print("MODEL INSTRUMENTS:", list(model_instruments.keys()))
         print("CATALOG INSTRUMENTS:", list(catalog_instruments.keys()))
-        print("HARDWARE ALLOWLIST:", self.hardware_measurement_ids)
         print("APPLICATION MODE:", self.application_mode)
         print("==============================================\n")
 
@@ -115,28 +109,7 @@ class InstrumentManager:
 
             if self.application_mode == "SIMULATION":
 
-                if instrument_id in self.hardware_measurement_ids:
-
-                    # Explicit read-only hardware allowlist.
-                    # This path is restricted to WT310E.
-                    if (
-                        instrument_id != "wt310e"
-                        or catalog_id != "yokogawa_wt310e"
-                    ):
-                        raise RuntimeError(
-                            "Hardware measurement access is restricted "
-                            "to the configured Yokogawa WT310E."
-                        )
-
-                    driver_id = catalog_config.get("driver")
-
-                    if driver_id != "generic_scpi":
-                        raise RuntimeError(
-                            "WT310E must use the generic_scpi driver."
-                        )
-
-                else:
-                    driver_id = "simulation"
+                driver_id = "simulation"
 
             else:
 
@@ -146,7 +119,7 @@ class InstrumentManager:
                     raise ValueError(
                         f"No driver defined for: {catalog_id}"
                     )
-
+                
             instrument = self.registry.create(
                 driver_id,
                 driver_configuration

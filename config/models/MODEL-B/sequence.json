@@ -21,7 +21,7 @@
             "enabled": true,
             "parameters": {
                 "instrument": "kikusui_tos9302",
-                "function": "ac_withstanding"
+                "function": "acw"
             }
         },
         {
@@ -31,7 +31,7 @@
             "enabled": true,
             "parameters": {
                 "instrument": "kikusui_tos9302",
-                "function": "ground_bond"
+                "function": "ecac"
             }
         }
     ]

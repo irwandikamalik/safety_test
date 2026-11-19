@@ -1,5 +1,5 @@
 {
-    "application_mode": "SIMULATION", 
+    "application_mode": "HARDWARE", 
     "default_model": "MODEL-A",
-    "allow_hardware_mode": false
+    "allow_hardware_mode": true
 }

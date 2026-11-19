@@ -1,7 +1,9 @@
 
 import json
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QLocale
+
+from PySide6.QtGui import QDoubleValidator
 
 from PySide6.QtWidgets import (
     QWidget,
@@ -36,6 +38,21 @@ class InstrumentConfigurationPage(QWidget):
 
     CATALOG_PATH = "global/instrument_catalog.json"
 
+    TEST_FUNCTION_LABELS = {
+        "acw": "ACW — AC Hipot Test",
+        "ecac": "ECAC — Ground Bond Test (AC)",
+        "ecdc": "ECDC — Ground Bond Test (DC)",
+    }
+
+    def parameter_configuration_path(self):
+
+        if not self.current_model_id:
+            raise ValueError("No model selected.")
+
+        return (
+            f"models/{self.current_model_id}/parameters.json"
+        )
+
     def model_configuration_path(self):
 
         if not self.current_model_id:
@@ -54,6 +71,9 @@ class InstrumentConfigurationPage(QWidget):
         self.driver_registry = DriverRegistry()
 
         self.measurement_checks = {}
+        self.function_checks = {}
+        self.parameter_inputs = {}
+        self.parameter_form_dirty = False
         self.current_instrument_id = None
         self.current_model_id = None
         self.loading_configuration = False
@@ -271,15 +291,53 @@ class InstrumentConfigurationPage(QWidget):
 
         model_layout.addLayout(element_layout)
 
-        measurement_group = QGroupBox(
+        # TEST FUNCTION SELECTION
+
+        self.function_group = QGroupBox(
+            "Available Test Functions"
+        )
+
+        self.function_container = QVBoxLayout(
+            self.function_group
+        )
+
+        model_layout.addWidget(self.function_group)
+
+        # MEASUREMENT SELECTION
+
+        self.measurement_group = QGroupBox(
             "Available Measurements"
         )
 
         self.measurement_container = QVBoxLayout(
-            measurement_group
+            self.measurement_group
         )
 
-        model_layout.addWidget(measurement_group)
+        model_layout.addWidget(self.measurement_group)
+
+        # TEST PARAMETER CONFIGURATION
+
+        self.parameter_group = QGroupBox(
+            "Test Parameter Configuration"
+        )
+
+        parameter_layout = QVBoxLayout(
+            self.parameter_group
+        )
+
+        self.parameter_tabs = QTabWidget()
+
+        parameter_layout.addWidget(
+            self.parameter_tabs
+        )
+
+        self.parameter_container = {}
+
+        self.build_parameter_forms()
+
+        model_layout.addWidget(
+            self.parameter_group
+        )
 
         root.addWidget(self.model_group)
 
@@ -308,7 +366,7 @@ class InstrumentConfigurationPage(QWidget):
         )
 
         self.save_button.clicked.connect(
-            self.save_settings
+            lambda: self.save_settings()
         )
 
         self.connection_button.clicked.connect(
@@ -371,6 +429,8 @@ class InstrumentConfigurationPage(QWidget):
         self.catalog_editor.setMinimumHeight(800)
         self.model_editor = QPlainTextEdit()
         self.model_editor.setMinimumHeight(800)
+        self.parameter_editor = QPlainTextEdit()
+        self.parameter_editor.setMinimumHeight(800)
 
         self.catalog_editor.setLineWrapMode(
             QPlainTextEdit.NoWrap
@@ -388,6 +448,11 @@ class InstrumentConfigurationPage(QWidget):
         self.json_tabs.addTab(
             self.model_editor,
             "Model Mapping"
+        )
+
+        self.json_tabs.addTab(
+            self.parameter_editor,
+            "Test Parameters"
         )
 
         json_layout.addWidget(self.json_tabs)
@@ -600,9 +665,14 @@ class InstrumentConfigurationPage(QWidget):
             self.model_editor.document().isModified()
         )
 
+        parameter_modified = (
+            self.parameter_editor.document().isModified()
+        )
+
         has_unsaved_changes = (
             catalog_modified
             or model_modified
+            or parameter_modified
             or self.form_dirty
         )
 
@@ -673,6 +743,22 @@ class InstrumentConfigurationPage(QWidget):
 
             self.model_editor.document().setModified(False)
 
+            parameter_text = self.service.read_config(
+                self.parameter_configuration_path()
+            )
+
+            self.parameter_editor.setPlainText(
+                parameter_text
+            )
+
+            self.parameter_editor.document().setModified(False)
+
+            parameter_data = json.loads(parameter_text)
+
+            self.load_parameter_controls(
+                parameter_data
+            )
+
             self.json_tabs.setTabText(
                 1,
                 f"{self.current_model_id} Mapping"
@@ -684,6 +770,7 @@ class InstrumentConfigurationPage(QWidget):
 
             self.refresh_instrument_list()
             self.form_dirty = False
+            self.parameter_form_dirty = False
 
             self.loading_configuration = False
 
@@ -946,6 +1033,20 @@ class InstrumentConfigurationPage(QWidget):
     # MODEL MEASUREMENT SETTINGS
     # ==========================================
 
+    def clear_function_controls(self):
+
+        while self.function_container.count():
+
+            item = self.function_container.takeAt(0)
+
+            widget = item.widget()
+
+            if widget is not None:
+                widget.deleteLater()
+
+        self.function_checks.clear()
+
+
     def clear_measurement_controls(self):
 
         while self.measurement_container.count():
@@ -965,6 +1066,7 @@ class InstrumentConfigurationPage(QWidget):
         catalog
     ):
 
+        self.clear_function_controls()
         self.clear_measurement_controls()
 
         instrument_id, model_entry = self.get_model_entry(
@@ -980,12 +1082,17 @@ class InstrumentConfigurationPage(QWidget):
 
         if not enabled:
 
+            self.function_group.setVisible(False)
+            self.measurement_group.setVisible(False)
+
             self.measurement_container.addWidget(
                 QLabel(
                     "This instrument is not enabled "
                     f"for {self.current_model_id}."
                 )
             )
+
+            self.parameter_group.setVisible(False)
 
             return
 
@@ -997,25 +1104,71 @@ class InstrumentConfigurationPage(QWidget):
             int(overrides.get("element", 1))
         )
 
+        # ======================================
+        # TOS9302 TEST FUNCTIONS
+        # ======================================
+
+        supported_functions = catalog.get(
+            "supported_functions", []
+        )
+
+        available_functions = [
+            function_id
+            for function_id in self.TEST_FUNCTION_LABELS
+            if function_id in supported_functions
+        ]
+
+        selected_functions = overrides.get(
+            "selected_functions",
+            available_functions
+        )
+
+        self.function_group.setVisible(
+            bool(available_functions)
+        )
+
+        self.parameter_group.setVisible(
+            bool(available_functions)
+        )
+
+        for function_id in available_functions:
+
+            checkbox = QCheckBox(
+                self.TEST_FUNCTION_LABELS[function_id]
+            )
+
+            checkbox.setChecked(
+                function_id in selected_functions
+            )
+
+            checkbox.toggled.connect(
+                self.mark_form_dirty
+            )
+
+            self.function_container.addWidget(
+                checkbox
+            )
+
+            self.function_checks[
+                function_id
+            ] = checkbox
+
+        # ======================================
+        # WT310E MEASUREMENTS
+        # ======================================
+
         definitions = catalog.get(
             "measurements", {}
         )
 
-        selected = overrides.get(
+        selected_measurements = overrides.get(
             "selected_measurements",
             list(definitions.keys())
         )
 
-        if not definitions:
-
-            self.measurement_container.addWidget(
-                QLabel(
-                    "No measurement definitions available "
-                    "for this instrument."
-                )
-            )
-
-            return
+        self.measurement_group.setVisible(
+            bool(definitions)
+        )
 
         for measurement_id, definition in definitions.items():
 
@@ -1034,7 +1187,7 @@ class InstrumentConfigurationPage(QWidget):
             )
 
             checkbox.setChecked(
-                measurement_id in selected
+                measurement_id in selected_measurements
             )
 
             checkbox.toggled.connect(
@@ -1048,6 +1201,34 @@ class InstrumentConfigurationPage(QWidget):
             self.measurement_checks[
                 measurement_id
             ] = checkbox
+
+        # ======================================
+        # EMPTY CONFIGURATION
+        # ======================================
+
+        if (
+            not available_functions
+            and not definitions
+        ):
+
+            self.measurement_group.setVisible(True)
+
+            self.measurement_container.addWidget(
+                QLabel(
+                    "No measurement or test function "
+                    "definitions available for this instrument."
+                )
+            )
+
+
+    def selected_functions(self):
+
+        return [
+            function_id
+            for function_id, checkbox
+            in self.function_checks.items()
+            if checkbox.isChecked()
+        ]
 
     def selected_measurements(self):
 
@@ -1121,10 +1302,12 @@ class InstrumentConfigurationPage(QWidget):
                 isinstance(entry, dict)
                 and entry.get("catalog_id") == catalog_id
             ):
+
                 model_entry = entry
                 break
 
         if model_entry is None:
+
             raise ValueError(
                 f"Instrument {catalog_id} is not mapped to "
                 f"{self.current_model_id}."
@@ -1132,28 +1315,55 @@ class InstrumentConfigurationPage(QWidget):
 
         catalog_data = self.get_catalog_data()
 
-        definitions = catalog_data.get(
+        catalog = catalog_data.get(
             "instruments", {}
         ).get(
             catalog_id, {}
-        ).get(
+        )
+
+        definitions = catalog.get(
             "measurements", {}
         )
 
-        selected = self.selected_measurements()
-
-        if definitions and not selected:
-            raise ValueError(
-                "Select at least one measurement."
-            )
+        supported_functions = catalog.get(
+            "supported_functions", []
+        )
 
         overrides = model_entry.setdefault(
             "overrides", {}
         )
 
+        # Save TOS9302 test function selection.
+
+        available_functions = [
+            function_id
+            for function_id in self.TEST_FUNCTION_LABELS
+            if function_id in supported_functions
+        ]
+
+        if available_functions:
+
+            overrides["selected_functions"] = (
+                self.selected_functions()
+            )
+
+        # Save WT310E measurement selection.
+
         if definitions:
+
+            selected = self.selected_measurements()
+
+            if not selected:
+
+                raise ValueError(
+                    "Select at least one measurement."
+                )
+
             overrides["selected_measurements"] = selected
-            overrides["element"] = self.element_input.value()
+
+            overrides["element"] = (
+                self.element_input.value()
+            )
 
     def save_settings(self, show_message=True):
 
@@ -1166,14 +1376,30 @@ class InstrumentConfigurationPage(QWidget):
             catalog_data = self.get_catalog_data()
             model_data = self.get_model_data()
 
-            # Save connection to GLOBAL catalog.
+            parameter_data = json.loads(
+                self.parameter_editor.toPlainText()
+            )
+
+            if not isinstance(parameter_data, dict):
+                raise ValueError(
+                    "Parameter configuration must be a JSON object."
+                )
+
+            # Save global connection.
             self.update_global_connection(catalog)
 
-            # Save measurement selection to MODEL configuration.
+            # Save instrument selection.
             self.update_model_measurements(
                 catalog_id,
                 model_data
             )
+
+            # Save parameter form changes.
+            if self.parameter_form_dirty:
+
+                self.collect_parameter_controls(
+                    parameter_data
+                )
 
             catalog_data["instruments"][catalog_id] = catalog
 
@@ -1189,18 +1415,31 @@ class InstrumentConfigurationPage(QWidget):
                 ensure_ascii=False
             )
 
-            # Persist global configuration.
+            parameter_text = json.dumps(
+                parameter_data,
+                indent=4,
+                ensure_ascii=False
+            )
+
+            # Persist global catalog.
             self.service.save_config(
                 self.CATALOG_PATH,
                 catalog_text
             )
 
-            # Persist model-specific configuration.
+            # Persist model instrument mapping.
             self.service.save_config(
                 self.model_configuration_path(),
                 model_text
             )
 
+            # Persist model test parameters.
+            self.service.save_config(
+                self.parameter_configuration_path(),
+                parameter_text
+            )
+
+            # Refresh editors.
             self.catalog_editor.setPlainText(
                 catalog_text
             )
@@ -1209,17 +1448,24 @@ class InstrumentConfigurationPage(QWidget):
                 model_text
             )
 
+            self.parameter_editor.setPlainText(
+                parameter_text
+            )
+
             self.catalog_editor.document().setModified(False)
             self.model_editor.document().setModified(False)
+            self.parameter_editor.document().setModified(False)
 
             self.form_dirty = False
+            self.parameter_form_dirty = False
 
             if show_message:
 
                 QMessageBox.information(
                     self,
                     "Configuration Saved",
-                    "Global and model configurations saved."
+                    "Global, model mapping, and test parameter "
+                    "configurations saved successfully."
                 )
 
             return True
@@ -1516,16 +1762,23 @@ class InstrumentConfigurationPage(QWidget):
 
     def current_editor(self):
 
-        if self.json_tabs.currentIndex() == 0:
+        index = self.json_tabs.currentIndex()
 
+        if index == 0:
             return (
                 self.catalog_editor,
                 self.CATALOG_PATH
             )
 
+        if index == 1:
+            return (
+                self.model_editor,
+                self.model_configuration_path()
+            )
+
         return (
-            self.model_editor,
-            self.model_configuration_path()
+            self.parameter_editor,
+            self.parameter_configuration_path()
         )
 
     def format_json(self):
@@ -1606,7 +1859,7 @@ class InstrumentConfigurationPage(QWidget):
                     "JSON root must be an object."
                 )
 
-            if path != self.CATALOG_PATH:
+            if path == self.model_configuration_path():
 
                 if not isinstance(
                     parsed.get("instruments"),
@@ -1614,6 +1867,24 @@ class InstrumentConfigurationPage(QWidget):
                 ):
                     raise ValueError(
                         "JSON must contain an 'instruments' object."
+                    )
+
+            elif path == self.parameter_configuration_path():
+
+                if "limits" in parsed and not isinstance(
+                    parsed["limits"],
+                    dict
+                ):
+                    raise ValueError(
+                        "'limits' must be a JSON object."
+                    )
+
+                if "test_parameters" in parsed and not isinstance(
+                    parsed["test_parameters"],
+                    dict
+                ):
+                    raise ValueError(
+                        "'test_parameters' must be a JSON object."
                     )
 
             self.service.save_config(
@@ -1652,6 +1923,313 @@ class InstrumentConfigurationPage(QWidget):
 
                 self.refresh_instrument_list()
 
-            else:
+            elif editor == self.model_editor:
 
                 self.refresh_instrument_list()
+
+            elif editor == self.parameter_editor:
+
+                parameter_data = json.loads(
+                    self.parameter_editor.toPlainText()
+                )
+
+                self.loading_configuration = True
+
+                self.load_parameter_controls(
+                    parameter_data
+                )
+
+                self.loading_configuration = False
+
+
+    def build_parameter_forms(self):
+
+        definitions = {
+            "acw": {
+                "title": "ACW — AC Hipot Test",
+                "fields": [
+                    ("test_voltage_V", "Test Voltage (V)"),
+                    ("limit_voltage_V", "Limit Voltage (V)"),
+                    ("frequency_Hz", "Frequency (Hz)"),
+                    ("upper_mA", "Upper Current Limit (mA)"),
+                    ("lower_mA", "Lower Current Limit (mA)"),
+                    ("test_time_s", "Test Time (s)"),
+                    ("rise_time_s", "Rise Time (s)"),
+                    ("fall_time_s", "Fall Time (s)"),
+                ],
+            },
+            "ecac": {
+                "title": "ECAC — Ground Bond Test (AC)",
+                "fields": [
+                    ("test_current_A", "Test Current (A)"),
+                    ("limit_current_A", "Limit Current (A)"),
+                    ("frequency_Hz", "Frequency (Hz)"),
+                    ("upper", "Upper Limit"),
+                    ("lower", "Lower Limit"),
+                    ("test_time_s", "Test Time (s)"),
+                    ("rise_time_s", "Rise Time (s)"),
+                    ("fall_time_s", "Fall Time (s)"),
+                ],
+            },
+            "ecdc": {
+                "title": "ECDC — Ground Bond Test (DC)",
+                "fields": [
+                    ("test_current_A", "Test Current (A)"),
+                    ("limit_current_A", "Limit Current (A)"),
+                    ("upper", "Upper Limit"),
+                    ("lower", "Lower Limit"),
+                    ("test_time_s", "Test Time (s)"),
+                    ("rise_time_s", "Rise Time (s)"),
+                    ("fall_time_s", "Fall Time (s)"),
+                ],
+            },
+        }
+
+        self.parameter_definitions = definitions
+        self.parameter_focus_order = []
+
+        for function_id, definition in definitions.items():
+
+            page = QWidget()
+            form = QFormLayout(page)
+
+            self.parameter_inputs[function_id] = {}
+
+            for field_id, label in definition["fields"]:
+
+                input_field = QLineEdit()
+                input_field.setPlaceholderText("Enter value")
+
+                validator = QDoubleValidator(
+                    0.0,
+                    1000000000.0,
+                    6,
+                    input_field
+                )
+
+                validator.setNotation(
+                    QDoubleValidator.Notation.StandardNotation
+                )
+
+                validator.setLocale(
+                    QLocale(QLocale.Language.English)
+                )
+
+                input_field.setValidator(validator)
+
+                input_field.textChanged.connect(
+                    self.mark_parameter_dirty
+                )
+
+                input_field.returnPressed.connect(
+                    lambda field=input_field:
+                        self.focus_next_parameter(field)
+                )
+
+                form.addRow(label, input_field)
+
+                self.parameter_inputs[function_id][field_id] = (
+                    input_field
+                )
+
+                self.parameter_focus_order.append(
+                    (function_id, input_field)
+                )
+
+            if function_id in ("ecac", "ecdc"):
+
+                judge_type = QComboBox()
+
+                judge_type.addItem(
+                    "Resistance (Ω)",
+                    "resistance"
+                )
+
+                judge_type.addItem(
+                    "Voltage (V)",
+                    "voltage"
+                )
+
+                judge_type.currentIndexChanged.connect(
+                    self.mark_parameter_dirty
+                )
+
+                form.addRow("Judge Type:", judge_type)
+
+                self.parameter_inputs[function_id]["judge_type"] = (
+                    judge_type
+                )
+
+            self.parameter_tabs.addTab(
+                page,
+                definition["title"]
+            )
+
+
+    def focus_next_parameter(self, current_widget):
+
+        if not self.parameter_focus_order:
+            return
+
+        current_index = None
+
+        for index, (_, widget) in enumerate(
+            self.parameter_focus_order
+        ):
+            if widget is current_widget:
+                current_index = index
+                break
+
+        if current_index is None:
+            return
+
+        next_index = (
+            current_index + 1
+        ) % len(self.parameter_focus_order)
+
+        next_function, next_widget = (
+            self.parameter_focus_order[next_index]
+        )
+
+        tab_index = list(
+            self.parameter_inputs.keys()
+        ).index(next_function)
+
+        self.parameter_tabs.setCurrentIndex(tab_index)
+
+        next_widget.setFocus()
+        next_widget.selectAll()
+        
+    def mark_parameter_dirty(self, *args):
+
+        if self.loading_configuration:
+            return
+
+        self.parameter_form_dirty = True
+        self.form_dirty = True
+
+
+    def load_parameter_controls(self, parameter_data):
+
+        test_parameters = parameter_data.get(
+            "test_parameters", {}
+        )
+
+        for function_id, fields in self.parameter_inputs.items():
+
+            values = test_parameters.get(
+                function_id, {}
+            )
+
+            for field_id, widget in fields.items():
+
+                value = values.get(field_id)
+
+                if isinstance(widget, QComboBox):
+
+                    index = widget.findData(
+                        value or "resistance"
+                    )
+
+                    if index < 0:
+                        index = 0
+
+                    widget.setCurrentIndex(index)
+
+                else:
+
+                    widget.setText(
+                        "" if value is None else str(value)
+                    )
+
+        self.parameter_form_dirty = False
+
+    def collect_parameter_controls(self, parameter_data):
+
+        test_parameters = parameter_data.setdefault(
+            "test_parameters",
+            {}
+        )
+
+        for function_id, fields in self.parameter_inputs.items():
+
+            function_parameters = test_parameters.setdefault(
+                function_id,
+                {}
+            )
+
+            for field_id, widget in fields.items():
+
+                if isinstance(widget, QComboBox):
+
+                    function_parameters[field_id] = (
+                        widget.currentData()
+                    )
+
+                    continue
+
+                value = widget.text().strip()
+
+                if not value:
+
+                    function_parameters.pop(
+                        field_id,
+                        None
+                    )
+
+                else:
+
+                    try:
+                        function_parameters[field_id] = float(value)
+
+                    except ValueError:
+                        raise ValueError(
+                            f"{function_id.upper()}: "
+                            f"Invalid numeric value for {field_id}: {value}"
+                        )
+
+            self.validate_parameter_group(
+                function_id,
+                function_parameters
+            )
+
+        return parameter_data
+
+    def validate_parameter_group(
+        self,
+        function_id,
+        parameters
+    ):
+
+        if "frequency_Hz" in parameters:
+
+            frequency = parameters["frequency_Hz"]
+
+            if frequency not in (50, 60):
+
+                raise ValueError(
+                    f"{function_id.upper()}: "
+                    "Frequency must be 50 or 60 Hz."
+                )
+
+        if (
+            "lower" in parameters
+            and "upper" in parameters
+            and parameters["lower"] > parameters["upper"]
+        ):
+
+            raise ValueError(
+                f"{function_id.upper()}: "
+                "Lower Limit cannot exceed Upper Limit."
+            )
+
+        if (
+            "lower_mA" in parameters
+            and "upper_mA" in parameters
+            and parameters["lower_mA"] > parameters["upper_mA"]
+        ):
+
+            raise ValueError(
+                "ACW: Lower Current Limit cannot exceed "
+                "Upper Current Limit."
+            )

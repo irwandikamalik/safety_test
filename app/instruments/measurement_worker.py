@@ -84,28 +84,10 @@ class MeasurementWorker(QThread):
                     "instruments": self.model_instruments
                 }
 
-            # Determine measurement source.
-            measurement_source = self.application_configuration.get(
-                "measurement_source",
-                "SIMULATION"
-            )
-
-            if measurement_source not in ("SIMULATION", "HARDWARE"):
-                raise ValueError(
-                    f"Invalid measurement source: {measurement_source}"
-                )
-
-            hardware_measurement_ids = (
-                {"wt310e"}
-                if measurement_source == "HARDWARE"
-                else set()
-            )
-
             manager = InstrumentManager(
                 normalized_model_configuration,
                 self.instrument_catalog,
-                self.application_configuration,
-                hardware_measurement_ids=hardware_measurement_ids
+                self.application_configuration
             )
 
             print("\n========== WORKER DEBUG ==========")
@@ -127,21 +109,26 @@ class MeasurementWorker(QThread):
                 self.instrument_id
             )
 
-            if (
-                self.application_configuration.get(
-                    "application_mode",
-                    "SIMULATION"
-                ) == "HARDWARE"
-            ):
+            if manager.application_mode == "HARDWARE":
+
                 identity = instrument.identify()
 
                 if "WT310E" not in identity.upper():
                     raise RuntimeError(
-                        f"Unexpected instrument identity: {identity}"
+                        "Unexpected instrument identity: "
+                        f"{identity}"
                     )
-            else:
-                print("WT310E: Running in simulation mode.")
 
+                print(
+                    f"WT310E: Physical instrument verified: {identity}"
+                )
+
+            else:
+
+                print(
+                    "WT310E: Running in simulation mode."
+                )
+                
             # Start measurement timer AFTER successful connection.
             started_at = time.monotonic()
             next_sample_at = started_at
