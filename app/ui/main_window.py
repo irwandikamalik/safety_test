@@ -228,7 +228,9 @@ class MainWindow(QMainWindow):
             dynamic_model=True
         )
 
-        self.instrument_page = InstrumentConfigurationPage()
+        self.instrument_page = InstrumentConfigurationPage(
+            workflow_is_active=self.is_workflow_active
+        )
 
         pages = [
             self.dashboard,
@@ -257,6 +259,73 @@ class MainWindow(QMainWindow):
         )
 
         self.setStatusBar(status)
+
+    # ==========================================
+    # WORKFLOW STATUS
+    # ==========================================
+
+    def is_workflow_active(self):
+
+        dashboard = getattr(
+            self,
+            "dashboard",
+            None
+        )
+
+        if dashboard is None:
+            return False
+
+        engine = getattr(
+            dashboard,
+            "engine",
+            None
+        )
+
+        if engine is None:
+            return False
+
+        # --------------------------------------
+        # CHECK WORKFLOW STATE
+        # --------------------------------------
+
+        if getattr(engine, "running", False):
+            return True
+
+        if getattr(engine, "waiting", False):
+            return True
+
+        # --------------------------------------
+        # CHECK AC VOLT CONFIRMATION WORKER
+        # --------------------------------------
+
+        ac_volt_worker = getattr(
+            engine,
+            "ac_volt_worker",
+            None
+        )
+
+        if (
+            ac_volt_worker is not None
+            and ac_volt_worker.isRunning()
+        ):
+            return True
+
+        # --------------------------------------
+        # CHECK OTHER MEASUREMENT WORKERS
+        # --------------------------------------
+
+        measurement_workers = getattr(
+            engine,
+            "measurement_workers",
+            []
+        )
+
+        for worker in measurement_workers:
+
+            if worker.isRunning():
+                return True
+
+        return False
 
     def create_nav_button(
         self,

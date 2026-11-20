@@ -62,11 +62,18 @@ class InstrumentConfigurationPage(QWidget):
             f"models/{self.current_model_id}/instruments.json"
         )
 
-    def __init__(self, parent=None):
+    def __init__(
+        self,
+        parent=None,
+        workflow_is_active=None
+    ):
 
         super().__init__(parent)
 
+        self.workflow_is_active = workflow_is_active
+
         self.service = ConfigService()
+
         self.model_service = ModelService()
         self.driver_registry = DriverRegistry()
 
@@ -653,10 +660,48 @@ class InstrumentConfigurationPage(QWidget):
         )
 
     # ==========================================
+    # WORKFLOW SAFETY GUARD
+    # ==========================================
+
+    def _require_workflow_idle(self):
+
+        if not callable(self.workflow_is_active):
+
+            raise RuntimeError(
+                "Cannot verify workflow status. "
+                "PCR500M access is blocked for safety."
+            )
+
+        try:
+
+            workflow_active = bool(
+                self.workflow_is_active()
+            )
+
+        except Exception as error:
+
+            raise RuntimeError(
+                "Failed to verify workflow status. "
+                "PCR500M access is blocked for safety."
+            ) from error
+
+        if workflow_active:
+
+            raise RuntimeError(
+                "PCR500M access is blocked while the "
+                "production workflow is active.\n\n"
+                "Please finish or stop the workflow "
+                "before accessing PCR500M configuration."
+            )
+
+    # ==========================================
     # PCR500M AC POWER SUPPLY
     # ==========================================
 
     def create_pcr_instrument(self):
+
+        # SAFETY GUARD
+        self._require_workflow_idle()
 
         configuration = self.build_driver_configuration()
 
@@ -740,6 +785,19 @@ class InstrumentConfigurationPage(QWidget):
 
     def pcr_connect_and_identify(self):
 
+        try:
+            self._require_workflow_idle()
+
+        except Exception as error:
+
+            QMessageBox.warning(
+                self,
+                "PCR500M Access Blocked",
+                str(error)
+            )
+
+            return
+
         if not self.save_settings(show_message=False):
             return
 
@@ -800,6 +858,19 @@ class InstrumentConfigurationPage(QWidget):
                     pass
 
     def pcr_apply_configuration(self):
+
+        try:
+            self._require_workflow_idle()
+
+        except Exception as error:
+
+            QMessageBox.warning(
+                self,
+                "PCR500M Access Blocked",
+                str(error)
+            )
+
+            return
 
         if not self.save_settings(show_message=False):
             return

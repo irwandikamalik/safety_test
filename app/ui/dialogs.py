@@ -14,7 +14,8 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QDialogButtonBox,
     QProgressBar,
-    QFrame
+    QFrame,
+    QMessageBox
 )
 
 class OperatorDialog(QDialog):
@@ -265,14 +266,19 @@ class MeasurementDialog(QDialog):
 
         result = result or {}
 
+        print("\n========== MEASUREMENT DIALOG DEBUG ==========")
+        print("RESULT:", result)
+        print("FUNCTION:", result.get("function"))
+        print("JUDGMENT:", result.get("judgment"))
+        print("MEASURED CURRENT:", result.get("measured_current_mA"))
+        print("==============================================\n")
+
         function = result.get("function")
 
         test_titles = {
             "acw": "AC Hipot Test",
             "ecac": "Ground Bond Test (AC)",
-            "ecdc": "Ground Bond Test (DC)",
-            "ac_withstanding": "AC Hipot Test",
-            "ground_bond": "Ground Bond Test"
+            "ecdc": "Ground Bond Test (DC)"
         }
 
         test_title = test_titles.get(
@@ -345,66 +351,19 @@ class MeasurementDialog(QDialog):
         # AC HIPOT TEST
         # ======================================
 
-        if function in ("acw", "ac_withstanding"):
+        if function == "acw":
 
-            add_row(
-                "Test Voltage:",
-                result.get("test_voltage_V"),
-                "V"
-            )
+            measured_current_A = result.get("current_A")
 
-            add_row(
-                "Voltage Limit:",
-                result.get("limit_voltage_V"),
-                "V"
-            )
+            if measured_current_A is not None:
 
-            add_row(
-                "Frequency:",
-                result.get("frequency_Hz"),
-                "Hz"
-            )
+                measured_current_mA = measured_current_A * 1000
 
-            add_row(
-                "Measured Current:",
-                result.get("measured_current_mA"),
-                "mA"
-            )
-
-            add_row(
-                "Lower Current Limit:",
-                result.get("lower_current_mA")
-            )
-
-            add_row(
-                "Upper Current Limit:",
-                result.get(
-                    "upper_current_mA",
-                    result.get("current_limit_mA")
-                ),
-                "mA"
-            )
-
-            add_row(
-                "Test Time:",
-                result.get(
-                    "test_time_s",
-                    result.get("test_duration_s")
-                ),
-                "s"
-            )
-
-            add_row(
-                "Rise Time:",
-                result.get("rise_time_s"),
-                "s"
-            )
-
-            add_row(
-                "Fall Time:",
-                result.get("fall_time_s"),
-                "s"
-            )
+                add_row(
+                    "Measured Current:",
+                    measured_current_mA,
+                    "mA"
+                )
 
         # ======================================
         # GROUND BOND TEST (AC / DC)
@@ -412,8 +371,7 @@ class MeasurementDialog(QDialog):
 
         elif function in (
             "ecac",
-            "ecdc",
-            "ground_bond"
+            "ecdc"
         ):
 
             add_row(
@@ -522,6 +480,13 @@ class LiveMeasurementDialog(QDialog):
 
         self.is_running = True
         self.value_labels = {}
+
+        self.measurement_display = {
+            "voltage": ("Voltage", "V"),
+            "current": ("Current", "A"),
+            "active_power": ("Active Power", "W"),
+            "voltage_frequency": ("Voltage Frequency", "Hz")
+        }
 
         self.setWindowTitle("Live Measurement")
         self.setMinimumSize(680, 500)
@@ -674,11 +639,15 @@ class LiveMeasurementDialog(QDialog):
 
     def create_measurement_row(self, measurement_id):
 
+        display_name, _ = self.measurement_display[
+            measurement_id
+        ]
+
         row = QFrame()
-        row.setObjectName("MeasurementRow")
+        row.setObjectName("ACMeasurementRow")
 
         row.setStyleSheet("""
-            QFrame#MeasurementRow {
+            QFrame#ACMeasurementRow {
                 background-color: #263449;
                 border: 1px solid #3B4B60;
                 border-radius: 7px;
@@ -693,16 +662,10 @@ class LiveMeasurementDialog(QDialog):
 
         row_layout.setSpacing(12)
 
-        display_name = (
-            measurement_id
-            .replace("_", " ")
-            .title()
-        )
+        name = QLabel(display_name)
+        name.setMinimumWidth(180)
 
-        name_label = QLabel(display_name)
-
-        name_label.setMinimumWidth(180)
-        name_label.setStyleSheet("""
+        name.setStyleSheet("""
             font-size: 10pt;
             font-weight: 500;
             color: #CBD5E1;
@@ -710,15 +673,16 @@ class LiveMeasurementDialog(QDialog):
             background: transparent;
         """)
 
-        value_label = QLabel("--")
+        value = QLabel("--")
 
-        value_label.setMinimumWidth(180)
-        value_label.setAlignment(
+        value.setMinimumWidth(180)
+
+        value.setAlignment(
             Qt.AlignmentFlag.AlignRight |
             Qt.AlignmentFlag.AlignVCenter
         )
 
-        value_label.setStyleSheet("""
+        value.setStyleSheet("""
             font-size: 12pt;
             font-weight: bold;
             color: #F8FAFC;
@@ -726,13 +690,13 @@ class LiveMeasurementDialog(QDialog):
             background: transparent;
         """)
 
-        row_layout.addWidget(name_label)
+        row_layout.addWidget(name)
         row_layout.addStretch()
-        row_layout.addWidget(value_label)
+        row_layout.addWidget(value)
 
         self.measurement_layout.addWidget(row)
 
-        self.value_labels[measurement_id] = value_label
+        self.value_labels[measurement_id] = value
 
     def update_source_status(self, simulation):
 
@@ -776,42 +740,53 @@ class LiveMeasurementDialog(QDialog):
 
     def update_measurement(
         self,
-        measurements,
+        result,
         sample_number,
         elapsed_s,
         simulation
     ):
 
-        if not self.is_running:
-            return
+        measurements = result.get(
+            "measurements",
+            {}
+        )
 
-        self.update_source_status(simulation)
+        self.source_label.setText(
+            "SOURCE: SIMULATION"
+            if simulation
+            else "SOURCE: LIVE HARDWARE"
+        )
 
         self.sample_label.setText(
             f"Samples: {sample_number}"
         )
 
         self.time_label.setText(
-            f"Elapsed: {elapsed_s:.1f} / "
-            f"{self.duration_s:.1f} s"
+            f"Elapsed: {elapsed_s:.1f} s"
         )
 
         progress = min(
             100,
-            int(elapsed_s / self.duration_s * 100)
+            int(
+                elapsed_s /
+                self.evaluation_duration_s * 100
+            )
         )
 
         self.progress_bar.setValue(progress)
 
         for measurement_id, measurement in measurements.items():
 
-            value = measurement.get("value")
-            unit = measurement.get("unit", "")
+            # Skip measurement yang tidak ingin ditampilkan.
+            if measurement_id not in self.measurement_display:
+                continue
 
             if measurement_id not in self.value_labels:
                 self.create_measurement_row(
                     measurement_id
                 )
+
+            value = measurement.get("value")
 
             if isinstance(value, (int, float)):
                 display_value = f"{value:,.3f}"
@@ -819,7 +794,7 @@ class LiveMeasurementDialog(QDialog):
                 display_value = str(value)
 
             self.value_labels[measurement_id].setText(
-                f"{display_value} {unit}"
+                display_value
             )
 
     # ==========================================
@@ -1270,6 +1245,7 @@ class ACVoltConfirmationDialog(QDialog):
             self.value_labels[measurement_id].setText(
                 f"{display_value} {unit}"
             )
+
 
     # ==========================================
     # EVALUATION PASS

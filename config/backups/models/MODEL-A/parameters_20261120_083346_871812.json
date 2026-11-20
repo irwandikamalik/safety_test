@@ -1,0 +1,54 @@
+{
+    "model_id": "MODEL-A",
+
+    "configuration_status": "APPROVED",
+    "hardware_approved": true,
+
+    "limits": {
+        "withstand_current_max_mA": 5.0,
+        "input_voltage_min_V": 220.0,
+        "input_voltage_max_V": 240.0
+    },
+    "test_parameters": {
+        "acw": {
+            "test_voltage_V": 1400.0,
+            "limit_voltage_V": 5500.0,
+            "frequency_Hz": 50.0,
+            "upper_mA": 18.0,
+            "test_time_s": 3.0,
+            "rise_time_s": 1.0,
+            "fall_time_s": 1.0,
+            "lower_mA": 0.0
+        },
+        "ecac": {
+            "judge_type": "resistance",
+            "test_current_A": 25.0,
+            "limit_current_A": 42.0,
+            "frequency_Hz": 60.0,
+            "upper": 0.2,
+            "test_time_s": 5.0,
+            "rise_time_s": 1.0,
+            "fall_time_s": 1.0,
+            "lower": 0.0
+        },
+        "ecdc": {
+            "judge_type": "resistance",
+            "test_current_A": 25.0,
+            "limit_current_A": 42.0,
+            "upper": 0.2,
+            "lower": 0.0,
+            "test_time_s": 5.0,
+            "rise_time_s": 1.0,
+            "fall_time_s": 1.0
+        },
+        "ac_volt_confirmation": {
+            "power_supply": {
+                "voltage_range_V": 270.0,
+                "output_voltage_V": 230.0,
+                "frequency_Hz": 50.0
+            },
+            "evaluation_duration_s": 10.0,
+            "sample_interval_s": 1.0
+        }
+    }
+}

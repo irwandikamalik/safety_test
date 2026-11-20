@@ -77,6 +77,7 @@ class ACVoltConfirmationWorker(QThread):
         self.power_meter_connected = False
 
         self.output_activated = False
+        self.shutdown_attempted = False
 
         self.final_result = None
 
@@ -279,12 +280,12 @@ class ACVoltConfirmationWorker(QThread):
                 "Activating PCR500M output..."
             )
 
+            self.output_activated = True
+
             self.instrument_manager.output_on(
                 self.power_supply_id,
                 safety_approved=True
             )
-
-            self.output_activated = True
 
             self.status_changed.emit(
                 "AC Volt Confirmation is running..."
@@ -349,7 +350,10 @@ class ACVoltConfirmationWorker(QThread):
 
         except Exception as error:
 
-            shutdown_error = self._safe_shutdown()
+            shutdown_error = None
+
+            if not self.shutdown_attempted:
+                shutdown_error = self._safe_shutdown()
 
             message = str(error)
 
@@ -478,12 +482,12 @@ class ACVoltConfirmationWorker(QThread):
 
         return result, voltage
 
+
     def _run_evaluation(self):
 
         start_time = time.monotonic()
 
         sample_number = 0
-
         readings = []
 
         while True:
@@ -493,26 +497,15 @@ class ACVoltConfirmationWorker(QThread):
                     "AC Volt Confirmation was cancelled."
                 )
 
-            elapsed = (
-                time.monotonic() - start_time
-            )
+            elapsed = time.monotonic() - start_time
 
             if elapsed >= self.evaluation_duration_s:
                 break
 
-            result, voltage = (
-                self._read_power_meter()
-            )
+            result, voltage = self._read_power_meter()
 
             sample_number += 1
-
             readings.append(voltage)
-
-            passed = (
-                self.voltage_min_V
-                <= voltage
-                <= self.voltage_max_V
-            )
 
             self.sample_received.emit(
                 result,
@@ -520,23 +513,6 @@ class ACVoltConfirmationWorker(QThread):
                 elapsed,
                 bool(result.get("simulation", False))
             )
-
-            # NG immediately stops evaluation.
-            if not passed:
-
-                return {
-                    "test": "ac_volt_confirmation",
-                    "judgment": "FAIL",
-                    "failure_reason": "Input voltage outside limits.",
-                    "measured_voltage_V": voltage,
-                    "voltage_min_V": self.voltage_min_V,
-                    "voltage_max_V": self.voltage_max_V,
-                    "sample_number": sample_number,
-                    "elapsed_s": elapsed,
-                    "simulation": bool(
-                        result.get("simulation", False)
-                    )
-                }
 
             remaining = (
                 self.evaluation_duration_s
@@ -557,10 +533,24 @@ class ACVoltConfirmationWorker(QThread):
                 "No WT310E measurement was collected."
             )
 
+        # ==============================================
+        # FINAL JUDGMENT AFTER EVALUATION
+        # ==============================================
+
+        final_voltage = readings[-1]
+
+        passed = (
+            self.voltage_min_V
+            <= final_voltage
+            <= self.voltage_max_V
+        )
+
+        judgment = "PASS" if passed else "FAIL"
+
         return {
             "test": "ac_volt_confirmation",
-            "judgment": "PASS",
-            "measured_voltage_V": readings[-1],
+            "judgment": judgment,
+            "measured_voltage_V": final_voltage,
             "average_voltage_V": (
                 sum(readings) / len(readings)
             ),
@@ -577,6 +567,7 @@ class ACVoltConfirmationWorker(QThread):
                 == "SIMULATION"
             )
         }
+
 
     # ==================================================
     # PASS LIVE MONITORING
@@ -628,37 +619,46 @@ class ACVoltConfirmationWorker(QThread):
     # ==================================================
     # SAFE SHUTDOWN
     # ==================================================
-
-
     def _shutdown_instruments(self):
 
+
+        if self.shutdown_attempted:
+            raise RuntimeError(
+                "PCR500M shutdown was already attempted. "
+                "Manual safety recovery is required."
+            )
+        self.shutdown_attempted = True
+
         errors = []
+        output_off_confirmed = False
 
-        # ----------------------------------
-        # PCR500M OUTPUT OFF
-        # ----------------------------------
+        # ==============================================
+        # PCR500M OUTPUT OFF AND VERIFICATION
+        # ==============================================
 
-        output_off_confirmed = not self.output_activated
-
-        if self.power_supply_connected and self.output_activated:
+        if self.power_supply_connected:
 
             try:
 
                 self.status_changed.emit(
-                    "Turning PCR500M output OFF..."
+                    "Verifying PCR500M output OFF..."
                 )
 
                 result = self.instrument_manager.output_off(
                     self.power_supply_id
                 )
 
-                if result is False:
+                if result is not True:
                     raise RuntimeError(
-                        "PCR500M Output OFF was not confirmed."
+                        "PCR500M output OFF was not confirmed."
                     )
 
                 self.output_activated = False
                 output_off_confirmed = True
+
+                self.status_changed.emit(
+                    "PCR500M output OFF verified."
+                )
 
             except Exception as error:
 
@@ -668,9 +668,9 @@ class ACVoltConfirmationWorker(QThread):
 
                 output_off_confirmed = False
 
-        # ----------------------------------
+        # ==============================================
         # WT310E DISCONNECT
-        # ----------------------------------
+        # ==============================================
 
         if self.power_meter_connected:
 
@@ -688,11 +688,13 @@ class ACVoltConfirmationWorker(QThread):
                     f"WT310E disconnect failed: {error}"
                 )
 
-        # ----------------------------------
+        # ==============================================
         # PCR500M DISCONNECT
-        # ----------------------------------
+        # ==============================================
 
-        # Never disconnect PCR500M if output OFF failed.
+        # Never disconnect PCR500M unless output OFF
+        # has been explicitly verified.
+
         if self.power_supply_connected and output_off_confirmed:
 
             try:
@@ -708,6 +710,18 @@ class ACVoltConfirmationWorker(QThread):
                 errors.append(
                     f"PCR500M disconnect failed: {error}"
                 )
+
+        elif self.power_supply_connected:
+
+            errors.append(
+                "CRITICAL: PCR500M communication retained. "
+                "Output OFF could not be verified. "
+                "Check PCR500M front panel immediately."
+            )
+
+        # ==============================================
+        # REPORT
+        # ==============================================
 
         if errors:
 

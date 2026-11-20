@@ -28,6 +28,8 @@ class KikusuiPCR500MInstrument(BaseInstrument):
         self.instrument = None
         self.connected = False
 
+        self.output_off_verified = False
+
     # ==================================================
     # CONNECTION
     # ==================================================
@@ -65,6 +67,7 @@ class KikusuiPCR500MInstrument(BaseInstrument):
             # This allows disconnect() to attempt output OFF if
             # serial configuration subsequently fails.
             self.connected = True
+            self.output_off_verified = False
 
             self.instrument.baud_rate = int(
                 self.connection_config.get(
@@ -116,41 +119,80 @@ class KikusuiPCR500MInstrument(BaseInstrument):
 
     def disconnect(self):
 
-        shutdown_error = None
+        if self.instrument is None:
+            return True
 
-        if self.connected and self.instrument is not None:
+        if not self.connected:
+            raise RuntimeError(
+                "PCR500M connection state is invalid."
+            )
 
-            try:
-                self.output_off()
-
-            except Exception as error:
-                shutdown_error = error
+        # ==============================================
+        # VERIFY OUTPUT OFF
+        # ==============================================
 
         try:
 
-            if self.instrument is not None:
-                self.instrument.close()
+            # Reuse the successful verification performed
+            # by output_off() if it is still valid.
+            if not self.output_off_verified:
 
-        finally:
+                status = self._parse_output_status(
+                    self._query("OUTP?")
+                )
+
+                if status == "ON":
+
+                    self.output_off()
+
+                elif status == "OFF":
+
+                    self.output_off_verified = True
+
+                else:
+
+                    raise RuntimeError(
+                        "PCR500M output status is unknown."
+                    )
+
+            if not self.output_off_verified:
+
+                raise RuntimeError(
+                    "PCR500M output OFF could not be verified."
+                )
+
+        except Exception as error:
+
+            raise RuntimeError(
+                "PCR500M disconnect aborted. "
+                "Output OFF could not be verified. "
+                f"Underlying error: {error}"
+            ) from error
+
+        # ==============================================
+        # CLOSE AFTER VERIFIED OFF
+        # ==============================================
+
+        try:
+
+            self.instrument.close()
 
             self.instrument = None
             self.connected = False
+            self.output_off_verified = False
 
             if self.resource_manager is not None:
 
-                try:
-                    self.resource_manager.close()
+                self.resource_manager.close()
+                self.resource_manager = None
 
-                finally:
-                    self.resource_manager = None
+            return True
 
-        if shutdown_error is not None:
+        except Exception as error:
 
             raise RuntimeError(
-                "PCR500M communication closed, but output OFF "
-                "could not be verified. Check the instrument "
-                "front panel and emergency shutdown procedure."
-            ) from shutdown_error
+                f"PCR500M VISA resource close failed: {error}"
+            ) from error
 
     # ==================================================
     # IDENTIFICATION
@@ -357,6 +399,7 @@ class KikusuiPCR500MInstrument(BaseInstrument):
             )
 
         try:
+            self.output_off_verified = False
 
             # Verify actual configuration before activation.
             actual = self.read_configuration()
@@ -423,6 +466,10 @@ class KikusuiPCR500MInstrument(BaseInstrument):
 
         self._require_connection()
 
+        # Previous verification must not be reused
+        # until a new OFF response is received.
+        self.output_off_verified = False
+
         self._write("OUTP OFF")
 
         status = self._parse_output_status(
@@ -434,6 +481,8 @@ class KikusuiPCR500MInstrument(BaseInstrument):
             raise RuntimeError(
                 "PCR500M output OFF could not be verified."
             )
+
+        self.output_off_verified = True
 
         return True
 
