@@ -47,8 +47,8 @@ class MainWindow(QMainWindow):
         self.operator = None
         self.nav_buttons = []
 
-        self.build_ui()
         self.show_operator_login()
+        self.build_ui()
 
     def build_ui(self):
 

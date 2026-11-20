@@ -145,16 +145,16 @@ class DashboardPage(QWidget):
 
         top_layout = QHBoxLayout()
 
-        operator_frame, operator_layout = create_panel(
-            "Operator Information"
-        )
+        # operator_frame, operator_layout = create_panel(
+        #     "Operator Information"
+        # )
 
-        self.operator_label = QLabel("Not logged in")
-        self.operator_label.setStyleSheet(
-            "font-size: 14pt; font-weight: bold;"
-        )
+        # self.operator_label = QLabel("Not logged in")
+        # self.operator_label.setStyleSheet(
+        #     "font-size: 14pt; font-weight: bold;"
+        # )
 
-        operator_layout.addWidget(self.operator_label)
+        # operator_layout.addWidget(self.operator_label)
 
         product_frame, product_layout = create_panel(
             "Product Information"
@@ -168,7 +168,6 @@ class DashboardPage(QWidget):
         product_layout.addWidget(self.door_top_label)
         product_layout.addWidget(self.door_bottom_label)
 
-        top_layout.addWidget(operator_frame, 1)
         top_layout.addWidget(product_frame, 2)
 
         root.addLayout(top_layout)

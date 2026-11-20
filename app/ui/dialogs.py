@@ -14,17 +14,15 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QDialogButtonBox,
     QProgressBar,
-    QFrame,
-    QMessageBox
+    QFrame
 )
 
 class OperatorDialog(QDialog):
-
-    OPERATORS = {
-        "049928": "Irwandika",
-        "049929": "Dika",
-        "049930": "Wan"
-    }
+    # OPERATORS = {
+    #     "049928": "Irwandika",
+    #     "049929": "Dika",
+    #     "049930": "Wan"
+    # }
 
     def __init__(self, parent=None):
 
