@@ -623,11 +623,6 @@ class WorkflowEngine(QObject):
             {}
         )
 
-        limits = self.parameter_configuration.get(
-            "limits",
-            {}
-        )
-
         duration_s = float(
             test_parameters.get("evaluation_duration_s", 10)
         )
@@ -637,12 +632,13 @@ class WorkflowEngine(QObject):
         )
 
         voltage_min_V = float(
-            limits["input_voltage_min_V"]
+            test_parameters["lower"]
         )
 
         voltage_max_V = float(
-            limits["input_voltage_max_V"]
+            test_parameters["upper"]
         )
+
 
         measurement_ids = parameters.get(
             "measurements",

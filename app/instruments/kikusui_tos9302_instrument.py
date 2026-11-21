@@ -249,7 +249,7 @@ class KikusuiTOS9302Instrument(BaseInstrument):
         )
 
         upper_current = self._format_number(
-            parameters["upper_mA"],
+            parameters["upper"],
             "upper_mA"
         )
 
@@ -279,11 +279,11 @@ class KikusuiTOS9302Instrument(BaseInstrument):
         self._write(f"ACW:VOLT:SWE:TIM {rise_time}")
 
         # Lower current limit.
-        if "lower_mA" in parameters:
+        if "lower" in parameters:
 
             lower_current = self._format_number(
-                parameters["lower_mA"],
-                "lower_mA"
+                parameters["lower"],
+                "lower"
             )
 
             self._write(

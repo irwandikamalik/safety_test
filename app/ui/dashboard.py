@@ -62,8 +62,7 @@ class DashboardPage(QWidget):
 
         self.service = ConfigService()
         self.model_service = ModelService()
-
-
+        self.current_step_row = None
 
         self.build_ui()
 
@@ -86,7 +85,6 @@ class DashboardPage(QWidget):
         # ==========================================
         # SERIAL NUMBER / AUTOMATIC MODEL DETECTION
         # ==========================================
-
         model_frame, model_layout = create_panel(
             "Product Identification"
         )
@@ -99,13 +97,13 @@ class DashboardPage(QWidget):
         )
         self.serial_input.setMinimumHeight(38)
 
-        self.detect_model_button = QPushButton(
-            "Detect Model"
+        self.check_model_button = QPushButton(
+            "Check"
         )
-        self.detect_model_button.setMinimumHeight(38)
+        self.check_model_button.setMinimumHeight(38)
 
         serial_row.addWidget(self.serial_input, 1)
-        serial_row.addWidget(self.detect_model_button)
+        serial_row.addWidget(self.check_model_button)
 
         model_layout.addLayout(serial_row)
 
@@ -120,11 +118,11 @@ class DashboardPage(QWidget):
 
         root.addWidget(model_frame)
 
-        self.detect_model_button.clicked.connect(
+        self.serial_input.returnPressed.connect(
             self.detect_model
         )
-
-        self.serial_input.returnPressed.connect(
+ 
+        self.check_model_button.clicked.connect(
             self.detect_model
         )
 
@@ -132,89 +130,51 @@ class DashboardPage(QWidget):
             self.on_serial_number_changed
         )
 
-        # ==========================================
-        # MODEL STATE
-        # ==========================================
-
-        self.selected_model_id = None
-        self.model_configuration = None
-        self.model_validation = None
-        self.serial_mapping_result = None
-        self.detected_serial_number = None
-
-
-        top_layout = QHBoxLayout()
-
-        # operator_frame, operator_layout = create_panel(
-        #     "Operator Information"
-        # )
-
-        # self.operator_label = QLabel("Not logged in")
-        # self.operator_label.setStyleSheet(
-        #     "font-size: 14pt; font-weight: bold;"
-        # )
-
-        # operator_layout.addWidget(self.operator_label)
-
-        product_frame, product_layout = create_panel(
-            "Product Information"
-        )
-
         self.serial_label = QLabel("Serial Number: -")
         self.door_top_label = QLabel("Door Top: -")
         self.door_bottom_label = QLabel("Door Bottom: -")
 
-        product_layout.addWidget(self.serial_label)
-        product_layout.addWidget(self.door_top_label)
-        product_layout.addWidget(self.door_bottom_label)
-
-        top_layout.addWidget(product_frame, 2)
-
-        root.addLayout(top_layout)
-
-        splitter = QSplitter(Qt.Horizontal)
-
         sequence_frame, sequence_layout = create_panel(
             "Test Sequence"
         )
-
-        self.sequence_table = QTableWidget(0, 3)
+        sequence_frame.setMinimumHeight(300)
+        self.sequence_table = QTableWidget(0, 7)
         self.sequence_table.verticalHeader().setVisible(False)
+        self.sequence_table.setGridStyle(Qt.PenStyle.SolidLine)
+        self.sequence_table.setShowGrid(True)
 
         self.sequence_table.setHorizontalHeaderLabels(
-            ["NO", "STEP", "STATUS"]
+            ["NO", "TEST","DESCRIPTION","LOW LIMIT","HIGH LIMIT","MEASUREMENT","JUDGEMENT"]
         )
+
+        self.sequence_table.setColumnWidth(0, 50)
+        self.sequence_table.setColumnWidth(1, 300)
+        self.sequence_table.setColumnWidth(2, 300)
+        self.sequence_table.setColumnWidth(3, 150)
+        self.sequence_table.setColumnWidth(4, 150)
+        self.sequence_table.setColumnWidth(5, 150)
+        self.sequence_table.setColumnWidth(6, 150)
 
         self.sequence_table.horizontalHeader().setSectionResizeMode(
-            1, QHeaderView.Stretch
+            QHeaderView.Fixed
         )
-
-        self.sequence_table.setColumnWidth(0, 45)
-        self.sequence_table.setColumnWidth(2, 100)
-
+        self.sequence_table.horizontalHeader().setDefaultAlignment(
+            Qt.AlignmentFlag.AlignCenter
+        )
         self.sequence_table.setEditTriggers(
             QTableWidget.NoEditTriggers
         )
-
         self.sequence_table.setSelectionMode(
             QTableWidget.NoSelection
         )
-
         sequence_layout.addWidget(self.sequence_table)
 
-        terminal_frame, terminal_layout = create_panel(
-            "Execution Terminal"
-        )
 
-        self.terminal = QTextEdit()
-        self.terminal.setReadOnly(True)
-
-        terminal_layout.addWidget(self.terminal, 1)
 
         self.progress = QProgressBar()
         self.progress.setValue(0)
 
-        terminal_layout.addWidget(self.progress)
+        sequence_layout.addWidget(self.progress)
 
         controls = QHBoxLayout()
 
@@ -228,9 +188,11 @@ class DashboardPage(QWidget):
             self.start_sequence
         )
 
+        # BUTTON START
         self.abort_button = QPushButton(
             "Abort (ESC)"
         )
+
         self.abort_button.setObjectName("DangerButton")
         self.abort_button.setEnabled(False)
         self.abort_button.clicked.connect(
@@ -240,7 +202,7 @@ class DashboardPage(QWidget):
         controls.addWidget(self.start_button)
         controls.addWidget(self.abort_button)
 
-        terminal_layout.addLayout(controls)
+        sequence_layout.addLayout(controls)
 
         # ==========================================
         # KEYBOARD SHORTCUTS
@@ -276,12 +238,7 @@ class DashboardPage(QWidget):
             self.abort_sequence
         )
 
-        splitter.addWidget(sequence_frame)
-        splitter.addWidget(terminal_frame)
-
-        splitter.setSizes([430, 700])
-
-        root.addWidget(splitter, 1)
+        root.addWidget(sequence_frame)
 
 
     # ==========================================
@@ -487,12 +444,27 @@ class DashboardPage(QWidget):
             )
 
             self.model_status_label.setText(
-                f"MODEL DETECTED: {model_id}\n"
                 f"Model Name: {model_name}\n"
-                f"Matched Rule: {mapping['rule_id']}\n"
-                f"Matched Value: {mapping['matched_value']}\n"
                 "Configuration validation passed."
             )
+
+            # ----------------------------------
+            # LOAD TEST SEQUENCE
+            # ----------------------------------
+
+            sequence = self.model_configuration.get(
+                "sequence", {}
+            )
+
+            steps = sequence.get("steps", [])
+
+            self.load_sequence_table(steps)
+            
+            self.serial_label.setText(
+                f"Serial Number: {self.detected_serial_number}"
+            )
+
+
 
             # ----------------------------------
             # ENABLE EXECUTION
@@ -511,6 +483,7 @@ class DashboardPage(QWidget):
                 "SUCCESS",
                 f"Model automatically selected: {model_id}"
             )
+
 
         except Exception as error:
 
@@ -607,24 +580,44 @@ class DashboardPage(QWidget):
             self.model_validation = None
 
     def set_operator(self, operator):
-
         self.operator = operator
 
-        self.operator_label.setText(
-            f'{operator["name"]} - {operator["id"]}'
+    def set_table_item(self, row, column, value):
+
+        item = QTableWidgetItem(str(value))
+
+        if column in [0, 3, 4, 5, 6]:
+            item.setTextAlignment(
+                Qt.AlignmentFlag.AlignCenter
+            )
+
+        self.sequence_table.setItem(
+            row, column, item
         )
+
 
     def load_sequence_table(self, steps):
 
         self.sequence_table.setRowCount(0)
 
-        for index, step in enumerate(steps):
+        test_parameters = (
+            self.model_configuration
+            .get("parameters", {})
+            .get("test_parameters", {})
+        )
+
+        for step in steps:
+
+            if not isinstance(step, dict):
+                raise TypeError(
+                    f"Invalid step configuration: "
+                    f"expected dict, got {type(step).__name__}: {step}"
+                )
 
             if not step.get("enabled", True):
                 continue
 
             row = self.sequence_table.rowCount()
-
             self.sequence_table.insertRow(row)
 
             name = step.get(
@@ -632,20 +625,43 @@ class DashboardPage(QWidget):
                 step.get("id", "Unnamed Step")
             )
 
-            self.sequence_table.setItem(
-                row, 0,
-                QTableWidgetItem(str(row + 1))
-            )
+            step_parameters = step.get("parameters", {})
 
-            self.sequence_table.setItem(
-                row, 1,
-                QTableWidgetItem(name)
-            )
+            step_type = step.get("type")
+            function = step_parameters.get("function")
 
-            self.sequence_table.setItem(
-                row, 2,
-                QTableWidgetItem("WAITING")
-            )
+            lower = "-"
+            upper = "-"
+            description = "-"
+
+            if step_type == "validate_serial":
+                description = self.detected_serial_number or "-"
+
+            if step_type == "instrument_test":
+
+                if function in test_parameters:
+
+                    function_parameters = test_parameters[function]
+
+                    lower = function_parameters.get("lower", "-")
+                    upper = function_parameters.get("upper", "-")
+
+            if step_type == "ac_volt_confirmation":
+
+                confirmation_parameters = test_parameters.get(
+                    "ac_volt_confirmation", {}
+                )
+
+                lower = confirmation_parameters.get("lower", "-")
+                upper = confirmation_parameters.get("upper", "-")
+
+            self.set_table_item(row, 0, row + 1)
+            self.set_table_item(row, 1, name)
+            self.set_table_item(row, 2, description)
+            self.set_table_item(row, 3, lower)
+            self.set_table_item(row, 4, upper)
+            self.set_table_item(row, 5, "-")
+            self.set_table_item(row, 6, "WAITING")
 
 
     def start_sequence(self):
@@ -722,26 +738,6 @@ class DashboardPage(QWidget):
                 )
             )
 
-            sequence = self.model_configuration["sequence"]
-
-            if sequence.get("version") != 1:
-
-                raise ValueError(
-                    "Unsupported sequence version."
-                )
-
-            # ----------------------------------
-            # PREPARE DASHBOARD
-            # ----------------------------------
-
-            self.load_sequence_table(
-                sequence.get("steps", [])
-            )
-
-            self.serial_label.setText(
-                f"Serial Number: {self.detected_serial_number}"
-            )
-
             self.door_top_label.setText(
                 "Door Top: -"
             )
@@ -750,7 +746,7 @@ class DashboardPage(QWidget):
                 "Door Bottom: -"
             )
 
-            self.terminal.clear()
+            # self.terminal.clear()
             self.progress.setValue(0)
 
             # ----------------------------------
@@ -798,7 +794,7 @@ class DashboardPage(QWidget):
             self.abort_button.setEnabled(True)
             
             self.serial_input.setEnabled(False)
-            self.detect_model_button.setEnabled(False)
+            self.check_model_button.setEnabled(False)
 
             self.engine.start()
 
@@ -817,20 +813,22 @@ class DashboardPage(QWidget):
 
         row = current - 1
 
+        self.current_step_row = row
+
         if row < self.sequence_table.rowCount():
 
             self.sequence_table.item(
-                row, 2
+                row, 6
             ).setText("RUNNING")
 
             if row > 0:
 
                 previous = self.sequence_table.item(
-                    row - 1, 2
+                    row - 1, 6
                 )
 
                 if previous:
-                    previous.setText("DONE")
+                    previous.setText("OK")
 
     def on_step_finished(self, current, message):
 
@@ -839,8 +837,8 @@ class DashboardPage(QWidget):
         if row < self.sequence_table.rowCount():
 
             self.sequence_table.item(
-                row, 2
-            ).setText("DONE")
+                row, 6
+            ).setText("OK")
 
     def handle_interaction(self, request):
 
@@ -887,6 +885,11 @@ class DashboardPage(QWidget):
                 return
 
             self.update_product_information(
+                request["field"],
+                value
+            )
+
+            self.update_sequence_input_result(
                 request["field"],
                 value
             )
@@ -991,6 +994,28 @@ class DashboardPage(QWidget):
                 f"Unsupported interaction: {interaction_type}"
             )
 
+    def update_sequence_input_result(self, field, value):
+
+        if field not in (
+            "door_top",
+            "door_bottom"
+        ):
+            return
+
+        row = self.current_step_row
+
+        if row is None:
+            return
+
+        if row >= self.sequence_table.rowCount():
+            return
+
+        self.set_table_item(
+            row,
+            2,
+            value
+        )
+
     def update_product_information(self, field, value):
 
         labels = {
@@ -1027,7 +1052,7 @@ class DashboardPage(QWidget):
         self.abort_button.setEnabled(False)
 
         self.serial_input.setEnabled(False)
-        self.detect_model_button.setEnabled(False)
+        self.check_model_button.setEnabled(False)
 
         self.engine.stop()
 
@@ -1039,7 +1064,7 @@ class DashboardPage(QWidget):
         self.abort_button.setEnabled(False)
 
         self.serial_input.setEnabled(True)
-        self.detect_model_button.setEnabled(True)
+        self.check_model_button.setEnabled(True)
 
         QTimer.singleShot(
             0,
@@ -1062,26 +1087,16 @@ class DashboardPage(QWidget):
             "ABORT": "#FF8585"
         }
 
-        color = colors.get(category, "#D6E1EE")
-
-        self.terminal.append(
-            f'<span style="color:#8496AA">'
-            f'[{timestamp}]</span> '
-            f'<span style="color:{color};font-weight:bold">'
-            f'[{category}]</span> '
-            f'<span style="color:#D6E1EE">'
-            f'{message}</span>'
-        )
-
     def finish_sequence(self):
 
         if self.sequence_table.rowCount():
 
             last = self.sequence_table.rowCount() - 1
 
-            self.sequence_table.item(
-                last, 2
-            ).setText("DONE")
+            item = self.sequence_table.item(last, 6)
+
+            if item:
+                item.setText("OK")
 
         self.add_log(
             "DONE",
@@ -1092,7 +1107,7 @@ class DashboardPage(QWidget):
         self.abort_button.setEnabled(False)
 
         self.serial_input.setEnabled(True)
-        self.detect_model_button.setEnabled(True)
+        self.check_model_button.setEnabled(True)
 
         QMessageBox.information(
             self,
@@ -1112,7 +1127,7 @@ class DashboardPage(QWidget):
         self.abort_button.setEnabled(False)
 
         self.serial_input.setEnabled(True)
-        self.detect_model_button.setEnabled(True)
+        self.check_model_button.setEnabled(True)
 
         QMessageBox.critical(
             self,

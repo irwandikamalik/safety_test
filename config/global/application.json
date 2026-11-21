@@ -1,5 +1,15 @@
 {
-    "application_mode": "HARDWARE", 
+    "description": [
+        "application_mode:",
+        "- HARDWARE: Use physical instruments.",
+        "- SIMULATION: Run without physical instruments.",
+
+        "allow_hardware_mode:",
+        "- true: Hardware operation is permitted.",
+        "- false: Hardware operation is disabled."
+    ],
+
+    "application_mode": "SIMULATION",
     "default_model": "MODEL-A",
-    "allow_hardware_mode": true
+    "allow_hardware_mode": false
 }

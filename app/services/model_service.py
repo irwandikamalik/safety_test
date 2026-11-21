@@ -932,13 +932,14 @@ class ModelService:
                     )
 
         # PARAMETER VALIDATION
+        test_parameters = parameters.get(
+            "test_parameters"
+        )
 
-        limits = parameters.get("limits")
-
-        if not isinstance(limits, dict):
+        if not isinstance(test_parameters, dict):
 
             errors.append(
-                "parameters.json: limits must be an object."
+                "parameters.json: test_parameters must be an object."
             )
 
         # APPLICATION MODE VALIDATION

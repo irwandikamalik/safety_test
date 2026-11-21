@@ -17,16 +17,17 @@ from PySide6.QtWidgets import (
     QFrame
 )
 
+from app.services.config_service import ConfigService
+
+
 class OperatorDialog(QDialog):
-    # OPERATORS = {
-    #     "049928": "Irwandika",
-    #     "049929": "Dika",
-    #     "049930": "Wan"
-    # }
 
     def __init__(self, parent=None):
 
         super().__init__(parent)
+
+        cf = ConfigService()
+        self.operator_config = cf.load_json("global/operator.json")
 
         self.setWindowTitle("Operator Login")
         self.setMinimumWidth(400)
@@ -71,18 +72,17 @@ class OperatorDialog(QDialog):
         )
 
     def validate_operator(self):
-
         operator_id = self.operator_input.text().strip()
 
-        if operator_id in self.OPERATORS:
+        for operator in self.operator_config["operators"]:
 
-            self.operator = {
-                "id": operator_id,
-                "name": self.OPERATORS[operator_id]
-            }
-
-            self.accept()
-
+            if operator_id == operator["id"]:
+                self.operator = {
+                    "name": operator["name"],
+                    "id": operator["id"],
+                    "rule": operator["rule"]
+                }
+                self.accept()
         else:
 
             self.error_label.setText(

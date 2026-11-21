@@ -1,10 +1,9 @@
-
 {
     "rules": [
         {
             "rule_id": "RULE_MODEL_A",
-            "start_suffix": 5,
-            "end_suffix": 7,
+            "start_suffix": 1,
+            "end_suffix": 3,
             "expected_value": "13J",
             "model_id": "MODEL-A",
             "enabled": true

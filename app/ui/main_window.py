@@ -47,8 +47,9 @@ class MainWindow(QMainWindow):
         self.operator = None
         self.nav_buttons = []
 
-        self.show_operator_login()
         self.build_ui()
+
+        self.show_operator_login()
 
     def build_ui(self):
 
@@ -174,13 +175,9 @@ class MainWindow(QMainWindow):
             "font-weight: bold; font-size: 11pt;"
         )
 
-        self.session_label = QLabel("Session: -")
-        self.session_label.setObjectName("Muted")
-
         top_layout.addWidget(self.page_heading)
         top_layout.addStretch()
-        top_layout.addWidget(self.session_label)
-
+        
         right_layout.addWidget(topbar)
 
         # PAGE STACK
@@ -400,7 +397,6 @@ class MainWindow(QMainWindow):
         dialog = OperatorDialog(self)
 
         if dialog.exec():
-
             self.operator = dialog.operator
 
             self.dashboard.set_operator(
@@ -410,11 +406,6 @@ class MainWindow(QMainWindow):
             self.operator_side_label.setText(
                 f'Operator: {self.operator["name"]}\n'
                 f'ID: {self.operator["id"]}'
-            )
-
-            self.session_label.setText(
-                f'{self.operator["name"]} - '
-                f'{self.operator["id"]}'
             )
 
             QTimer.singleShot(
@@ -453,10 +444,6 @@ class MainWindow(QMainWindow):
 
             self.operator_side_label.setText(
                 "Operator: Not logged in"
-            )
-
-            self.session_label.setText(
-                "Session: -"
             )
 
             self.show_operator_login()

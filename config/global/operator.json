@@ -1,14 +1,15 @@
-[ 
-    {
-        "name": "Irwandika",
-        "id": "049928",
-        "rule": "admin"
-    },
-    {
-        "name": "Dika",
-        "id": "049929",
-        "rule": "user"
-    }
-]
-
+{
+    "operators": [ 
+        {
+            "name": "Irwandika",
+            "id": "049928",
+            "rule": "admin"
+        },
+        {
+            "name": "Dika",
+            "id": "049929",
+            "rule": "user"
+        }
+    ]
+}
         
