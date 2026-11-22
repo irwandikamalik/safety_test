@@ -390,12 +390,47 @@ class WorkflowValidator:
         instrument_catalog
     ):
 
+        # ------------------------------------------
+        # SEQUENCE METADATA
+        # ------------------------------------------
+
         sequence_id = sequence.get("sequence_id")
 
         if not isinstance(sequence_id, str) or not sequence_id.strip():
 
             self.errors.append(
                 "sequence.json: sequence_id is required."
+            )
+
+        elif not self.IDENTIFIER_PATTERN.fullmatch(sequence_id):
+
+            self.errors.append(
+                "sequence.json: sequence_id contains invalid characters. "
+                "Use letters, numbers, and underscores; "
+                "the first character must be a letter or underscore."
+            )
+
+        sequence_name = sequence.get("name")
+
+        if (
+            not isinstance(sequence_name, str)
+            or not sequence_name.strip()
+        ):
+
+            self.errors.append(
+                "sequence.json: name is required."
+            )
+
+        version = sequence.get("version")
+
+        if (
+            not isinstance(version, int)
+            or isinstance(version, bool)
+            or version < 1
+        ):
+
+            self.errors.append(
+                "sequence.json: version must be a positive integer."
             )
 
         steps = sequence.get("steps")

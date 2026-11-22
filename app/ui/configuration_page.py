@@ -1,6 +1,7 @@
 
 import json
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -17,6 +18,8 @@ from PySide6.QtWidgets import (
 
 from app.services.config_service import ConfigService
 from app.services.model_service import ModelService
+from app.ui.workflow_sequence_editor import WorkflowSequenceEditor
+from app.core.workflow_validator import WorkflowValidator
 
 
 class ConfigurationPage(QWidget):
@@ -40,6 +43,12 @@ class ConfigurationPage(QWidget):
         self.editor_pages = {}
         self.current_model_id = None
 
+        self.sequence_editors = {}
+        self.sequence_tabs = {}
+
+        self._syncing_sequence = False
+        self._sequence_source = {}
+
         self.build_ui(title)
 
         if self.dynamic_model:
@@ -55,45 +64,79 @@ class ConfigurationPage(QWidget):
     def build_ui(self, title):
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(22, 18, 22, 18)
+        root.setContentsMargins(20, 8, 20, 8)
         root.setSpacing(10)
-
-        heading = QLabel(title)
-        heading.setObjectName("PageTitle")
-
-        subtitle = QLabel(
-            "Edit configuration directly using JSON."
-        )
-        subtitle.setObjectName("Muted")
-
-        root.addWidget(heading)
-        root.addWidget(subtitle)
 
         if self.dynamic_model:
 
-            model_group = QGroupBox("Model Selection")
+            model_group = QGroupBox("Workflow Configuration")
             model_group.setObjectName("SequenceModelGroup")
+            model_group.setMinimumHeight(80)
 
-            model_layout = QFormLayout(model_group)
+            model_layout = QHBoxLayout(model_group)
+            model_layout.setContentsMargins(20, 1, 20, 1)
+            model_layout.setSpacing(10)
+            model_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+
+            model_label = QLabel("Available Model:")
+            model_label.setObjectName("Muted")
 
             self.model_selector = QComboBox()
-            self.model_selector.setObjectName(
-                "SequenceModelSelector"
-            )
-            self.model_selector.setMinimumHeight(38)
+            self.model_selector.setObjectName("SequenceModelSelector")
+            self.model_selector.setMinimumHeight(36)
+            self.model_selector.setMinimumWidth(100)
 
             self.model_selector.currentIndexChanged.connect(
                 self.on_model_changed
             )
 
-            model_layout.addRow(
-                "Available Model:",
-                self.model_selector
+            model_layout.addWidget(
+                model_label,
+                alignment=Qt.AlignmentFlag.AlignVCenter
+            )
+            model_layout.addWidget(
+                self.model_selector,
+                1,
+                alignment=Qt.AlignmentFlag.AlignVCenter
+            )
+
+            model_layout.addSpacing(12)
+
+            format_button = QPushButton("Format")
+            validate_button = QPushButton("Validate")
+            save_button = QPushButton("Save")
+
+            save_button.setObjectName("PrimaryButton")
+
+            format_button.setMinimumHeight(36)
+            validate_button.setMinimumHeight(36)
+            save_button.setMinimumHeight(36)
+
+            format_button.clicked.connect(self.format_json)
+            validate_button.clicked.connect(self.validate_json)
+            save_button.clicked.connect(self.save_json)
+
+            model_layout.addWidget(
+                format_button,
+                alignment=Qt.AlignmentFlag.AlignVCenter
+            )
+
+            model_layout.addWidget(
+                validate_button,
+                alignment=Qt.AlignmentFlag.AlignVCenter
+            )
+
+            model_layout.addWidget(
+                save_button,
+                alignment=Qt.AlignmentFlag.AlignVCenter
             )
 
             root.addWidget(model_group)
 
         self.tabs = QTabWidget()
+
+        if self.dynamic_model:
+            self.tabs.tabBar().hide()
 
         for label, path in self.configurations:
 
@@ -116,24 +159,26 @@ class ConfigurationPage(QWidget):
 
         root.addWidget(self.tabs, 1)
 
-        buttons = QHBoxLayout()
+        if not self.dynamic_model:
 
-        format_button = QPushButton("Format JSON")
-        validate_button = QPushButton("Validate")
+            buttons = QHBoxLayout()
 
-        save_button = QPushButton("Save")
-        save_button.setObjectName("PrimaryButton")
+            format_button = QPushButton("Format JSON")
+            validate_button = QPushButton("Validate")
 
-        format_button.clicked.connect(self.format_json)
-        validate_button.clicked.connect(self.validate_json)
-        save_button.clicked.connect(self.save_json)
+            save_button = QPushButton("Save")
+            save_button.setObjectName("PrimaryButton")
 
-        buttons.addWidget(format_button)
-        buttons.addWidget(validate_button)
-        buttons.addStretch()
-        buttons.addWidget(save_button)
+            format_button.clicked.connect(self.format_json)
+            validate_button.clicked.connect(self.validate_json)
+            save_button.clicked.connect(self.save_json)
 
-        root.addLayout(buttons)
+            buttons.addWidget(format_button)
+            buttons.addWidget(validate_button)
+            buttons.addStretch()
+            buttons.addWidget(save_button)
+
+            root.addLayout(buttons)
 
     # ==========================================
     # MODEL SELECTION
@@ -249,43 +294,242 @@ class ConfigurationPage(QWidget):
             f"models/{self.current_model_id}/sequence.json"
         )
 
+    def get_current_sequence(self):
+
+        path, editor = self.current_editor()
+
+        source = self._sequence_source.get(
+            path,
+            "advanced"
+        )
+
+        if source == "visual":
+
+            return self.sequence_editors[path].get_sequence()
+
+        sequence = json.loads(
+            editor.toPlainText()
+        )
+
+        if not isinstance(sequence, dict):
+            raise ValueError(
+                "Sequence configuration must be a JSON object."
+            )
+
+        return sequence
+
+
+    def validate_current_workflow(self):
+
+        if not self.dynamic_model:
+            return True, []
+
+        try:
+
+            sequence = self.get_current_sequence()
+
+            configuration = self.model_service.load_model(
+                self.current_model_id
+            )
+
+            # Replace sequence from disk with the latest
+            # sequence currently being edited.
+            configuration["sequence"] = sequence
+
+            result = WorkflowValidator().validate(
+                configuration,
+                expected_model_id=self.current_model_id
+            )
+
+            return (
+                result.get("valid", False),
+                result.get("errors", [])
+            )
+
+        except Exception as error:
+
+            return False, [str(error)]
+
     def load_model_configuration(self):
 
         path = self.model_configuration_path()
 
-        # Create the editor only when this model is first selected.
         if path not in self.editors:
 
             page = QWidget()
             layout = QVBoxLayout(page)
 
             path_label = QLabel(path)
-            path_label.setObjectName("Muted")
 
-            editor = QPlainTextEdit()
-            editor.setLineWrapMode(QPlainTextEdit.NoWrap)
+            sequence_tabs = QTabWidget()
+            sequence_tabs.setObjectName("WorkflowSequenceTabs")
+            sequence_tabs.setDocumentMode(True)
 
-            layout.addWidget(path_label)
-            layout.addWidget(editor, 1)
+            sequence_tabs.setStyleSheet("""
+                QTabWidget#WorkflowSequenceTabs {
+                    background-color: #F3F5F8;
+                    border: none;
+                }
 
-            self.editors[path] = editor
+                QTabWidget#WorkflowSequenceTabs::pane {
+                    background-color: #FFFFFF;
+                    border: 1px solid #DFE5EC;
+                    border-radius: 8px;
+                    top: -1px;
+                }
+
+                QTabWidget#WorkflowSequenceTabs QTabBar {
+                    background-color: #FFFFFF;
+                    border: none;
+                }
+
+                QTabWidget#WorkflowSequenceTabs QTabBar::tab {
+                    background-color: #E8EDF3;
+                    color: #263449;
+                    border: 1px solid #D6DEE8;
+                    border-radius: 7px;
+                    padding: 6px 14px;
+                    margin-right: 5px;
+                    min-height: 22px;
+                }
+
+                QTabWidget#WorkflowSequenceTabs QTabBar::tab:selected {
+                    background-color: #1769AA;
+                    color: #FFFFFF;
+                    border: 1px solid #1769AA;
+                }
+
+                QTabWidget#WorkflowSequenceTabs QTabBar::tab:hover:!selected {
+                    background-color: #DCE6F0;
+                    color: #263449;
+                }
+            """)
+
+            # Visual Editor
+            sequence_editor = WorkflowSequenceEditor()
+
+            # Advanced JSON Editor
+            json_editor = QPlainTextEdit()
+            json_editor.setLineWrapMode(QPlainTextEdit.NoWrap)
+
+            sequence_tabs.addTab(
+                sequence_editor,
+                "Visual Editor"
+            )
+
+            sequence_tabs.addTab(
+                json_editor,
+                "Advanced JSON"
+            )
+
+            path_label.setAlignment(
+                Qt.AlignmentFlag.AlignRight |
+                Qt.AlignmentFlag.AlignVCenter
+            )
+
+            path_label.setStyleSheet("""
+                QLabel {
+                    color: #738197;
+                    font-size: 9pt;
+                    padding-right: 8px;
+                }
+            """)
+
+            sequence_tabs.setCornerWidget(
+                path_label,
+                Qt.Corner.TopRightCorner
+            )
+
+            layout.addWidget(sequence_tabs, 1)
+
+            self.editors[path] = json_editor
             self.editor_pages[path] = page
+            self.sequence_editors[path] = sequence_editor
+            self.sequence_tabs[path] = sequence_tabs
+
+            sequence_editor.sequence_changed.connect(
+                lambda sequence, p=path:
+                    self.on_visual_sequence_changed(p, sequence)
+            )
+
+            json_editor.textChanged.connect(
+                lambda p=path:
+                    self.on_advanced_json_changed(p)
+            )
 
             self.tabs.addTab(
                 page,
                 self.current_model_id
             )
 
-        # Reload the selected model's own JSON file.
         self.load_file(path)
 
-        # Important: select the tab belonging to this model,
-        # not simply the last tab.
         page = self.editor_pages[path]
         tab_index = self.tabs.indexOf(page)
 
         if tab_index >= 0:
             self.tabs.setCurrentIndex(tab_index)
+
+    def on_visual_sequence_changed(self, path, sequence):
+
+        if self._syncing_sequence:
+            return
+
+        self._syncing_sequence = True
+
+        try:
+
+            editor = self.editors[path]
+
+            editor.setPlainText(
+                json.dumps(
+                    sequence,
+                    indent=4,
+                    ensure_ascii=False
+                )
+            )
+
+            editor.document().setModified(True)
+
+            self._sequence_source[path] = "visual"
+
+        finally:
+            self._syncing_sequence = False
+
+
+    def on_advanced_json_changed(self, path):
+
+        if self._syncing_sequence:
+            return
+
+        self._sequence_source[path] = "advanced"
+
+        editor = self.editors[path]
+        sequence_editor = self.sequence_editors[path]
+
+        try:
+
+            sequence = json.loads(
+                editor.toPlainText()
+            )
+
+            if not isinstance(sequence, dict):
+                return
+
+            if not isinstance(sequence.get("steps"), list):
+                return
+
+            self._syncing_sequence = True
+
+            sequence_editor.set_sequence(sequence)
+
+        except (json.JSONDecodeError, ValueError, TypeError):
+            # JSON belum valid atau belum memiliki struktur sequence.
+            # Jangan mengubah teks Advanced JSON.
+            return
+
+        finally:
+            self._syncing_sequence = False
 
     def refresh_model_list(self):
 
@@ -381,6 +625,39 @@ class ConfigurationPage(QWidget):
 
             editor.document().setModified(False)
 
+            if self.dynamic_model and path in self.sequence_editors:
+
+                try:
+
+                    sequence = json.loads(content)
+
+                    if (
+                        isinstance(sequence, dict)
+                        and isinstance(sequence.get("steps"), list)
+                    ):
+
+                        self._syncing_sequence = True
+
+                        self.sequence_editors[path].set_sequence(
+                            sequence
+                        )
+
+                        self._sequence_source[path] = "advanced"
+
+                    else:
+                        raise ValueError(
+                            "Sequence JSON must contain a steps list."
+                        )
+
+                except (json.JSONDecodeError, ValueError, TypeError) as error:
+
+                    print(
+                        f"Sequence editor load error ({path}): {error}"
+                    )
+
+                finally:
+                    self._syncing_sequence = False
+
         except Exception as error:
 
             editor.setPlainText("{}")
@@ -424,21 +701,45 @@ class ConfigurationPage(QWidget):
             editor.toPlainText()
         )
 
-        if valid:
-
-            QMessageBox.information(
-                self,
-                "JSON Validation",
-                message
-            )
-
-        else:
+        if not valid:
 
             QMessageBox.warning(
                 self,
                 "JSON Validation Error",
                 message
             )
+
+            return
+
+        if self.dynamic_model:
+
+            valid, errors = self.validate_current_workflow()
+
+            if not valid:
+
+                QMessageBox.warning(
+                    self,
+                    "Workflow Validation Failed",
+                    "\n".join(
+                        f"- {error}" for error in errors
+                    )
+                )
+
+                return
+
+            QMessageBox.information(
+                self,
+                "Workflow Validation",
+                "Workflow configuration is valid."
+            )
+
+            return
+
+        QMessageBox.information(
+            self,
+            "JSON Validation",
+            message
+        )
 
     def save_current_configuration(
         self,
@@ -447,6 +748,7 @@ class ConfigurationPage(QWidget):
 
         path, editor = self.current_editor()
 
+        # 1. Validate JSON syntax.
         valid, message = self.service.validate_json(
             editor.toPlainText()
         )
@@ -463,6 +765,26 @@ class ConfigurationPage(QWidget):
 
             return False
 
+        # 2. Validate complete workflow configuration.
+        if self.dynamic_model:
+
+            valid, errors = self.validate_current_workflow()
+
+            if not valid:
+
+                if show_message:
+
+                    QMessageBox.warning(
+                        self,
+                        "Workflow Validation Failed",
+                        "\n".join(
+                            f"- {error}" for error in errors
+                        )
+                    )
+
+                return False
+
+        # 3. Save configuration.
         try:
 
             self.service.save_config(

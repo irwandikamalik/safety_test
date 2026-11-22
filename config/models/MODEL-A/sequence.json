@@ -1,86 +1,85 @@
-
 {
+    "name": "BACKUP TEST",
     "sequence_id": "test_sequence",
-    "name": "Safety Test Sequence",
-    "version": 1,
     "steps": [
         {
-            "id": "step_001",
-            "type": "validate_serial",
-            "name": "Validate Serial Number",
             "enabled": true,
+            "id": "step_001",
+            "name": "Validate Serial Number",
             "parameters": {
-                "source": "serial_number",
+                "max_length": 50,
                 "min_length": 1,
-                "max_length": 50
-            }
+                "source": "serial_number"
+            },
+            "type": "validate_serial"
         },
         {
-            "id": "step_002",
-            "type": "input",
-            "name": "Scan Door Top",
             "enabled": true,
+            "id": "step_002",
+            "name": "Scan Door Top",
             "parameters": {
                 "field": "door_top",
                 "label": "Door Top Barcode",
                 "placeholder": "Scan Door Top Barcode",
                 "required": true
-            }
+            },
+            "type": "input"
         },
         {
-            "id": "step_003",
-            "type": "input",
-            "name": "Scan Door Bottom",
             "enabled": true,
+            "id": "step_003",
+            "name": "Scan Door Bottom",
             "parameters": {
                 "field": "door_bottom",
                 "label": "Door Bottom Barcode",
                 "placeholder": "Scan Door Bottom Barcode",
                 "required": true
-            }
+            },
+            "type": "input"
         },
         {
+            "enabled": true,
             "id": "step_004",
-            "type": "instrument_test",
             "name": "AC Hipot Test",
-            "enabled": true,
             "parameters": {
-                "instrument": "kikusui_tos9302",
-                "function": "acw"
-            }
+                "function": "acw",
+                "instrument": "kikusui_tos9302"
+            },
+            "type": "instrument_test"
         },
         {
-            "id": "step_005",
-            "type": "ac_volt_confirmation",
-            "name": "AC Volt Confirmation",
             "enabled": true,
+            "id": "step_005",
+            "name": "AC Volt Confirmation",
             "parameters": {
-                "power_supply": "kikusui_pcr500m",
-                "power_meter": "wt310e",
                 "measurements": [
                     "voltage",
                     "current",
                     "active_power",
                     "current_frequency",
                     "voltage_frequency"
-                ]
-            }
+                ],
+                "power_meter": "wt310e",
+                "power_supply": "kikusui_pcr500m"
+            },
+            "type": "ac_volt_confirmation"
         },
         {
+            "enabled": true,
             "id": "build_final_result",
-            "type": "build_result",
             "name": "Build Final Result",
-            "enabled": true,
-            "parameters": {}
+            "parameters": {},
+            "type": "build_result"
         },
         {
-            "id": "save_final_result",
-            "type": "save_result",
-            "name": "Save Final Result",
             "enabled": true,
+            "id": "save_final_result",
+            "name": "Save Final Result",
             "parameters": {
                 "source": "result"
-            }
+            },
+            "type": "save_result"
         }
-    ]
+    ],
+    "version": 1
 }
