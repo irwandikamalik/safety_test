@@ -1,38 +1,52 @@
 {
-    "sequence_id": "model_b_test_sequence",
     "name": "Model B Safety Test Sequence",
-    "version": 1,
+    "sequence_id": "model_b_test_sequence",
     "steps": [
         {
+            "enabled": true,
             "id": "step_001",
-            "type": "validate_serial",
             "name": "Validate Serial Number",
-            "enabled": true,
             "parameters": {
-                "source": "serial_number",
+                "max_length": 50,
                 "min_length": 1,
-                "max_length": 50
-            }
+                "source": "serial_number"
+            },
+            "type": "validate_serial"
         },
         {
+            "enabled": true,
             "id": "step_002",
-            "type": "instrument_test",
             "name": "AC Hipot Test",
-            "enabled": true,
             "parameters": {
-                "instrument": "kikusui_tos9302",
-                "function": "acw"
-            }
+                "function": "acw",
+                "instrument": "kikusui_tos9302"
+            },
+            "type": "instrument_test"
         },
         {
-            "id": "step_003",
-            "type": "instrument_test",
-            "name": "Ground Bond Test",
             "enabled": true,
+            "id": "step_003",
+            "name": "Ground Bond Test",
             "parameters": {
-                "instrument": "kikusui_tos9302",
-                "function": "ecac"
-            }
+                "function": "ecac",
+                "instrument": "kikusui_tos9302"
+            },
+            "type": "instrument_test"
+        },
+        {
+            "enabled": true,
+            "id": "step_004",
+            "name": "Build Result",
+            "parameters": {},
+            "type": "build_result"
+        },
+        {
+            "enabled": true,
+            "id": "step_005",
+            "name": "Save Result",
+            "parameters": {},
+            "type": "save_result"
         }
-    ]
+    ],
+    "version": 1
 }

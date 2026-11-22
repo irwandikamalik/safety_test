@@ -23,7 +23,8 @@ from app.ui.dialogs import OperatorDialog
 from app.ui.history_page import HistoryPage
 from app.ui.instrument_configuration_page import InstrumentConfigurationPage
 from app.ui.model_management_page import ModelManagementPage
-
+from app.ui.serial_mapping_page import SerialMappingPage
+from app.ui.model_configuration_page import ModelConfigurationPage
 
 class MainWindow(QMainWindow):
 
@@ -187,37 +188,17 @@ class MainWindow(QMainWindow):
         self.dashboard = DashboardPage()
         self.history_page = HistoryPage()
 
-        self.model_management_page = ModelManagementPage()
-
-        self.model_management_page.dashboard = self.dashboard
-
         # ==========================================
         # CONFIGURATION PAGES
         # ==========================================
 
-        self.model_page = ConfigurationPage(
-            "Model Configuration",
-            [
-                (
-                    "Model",
-                    "models/MODEL-A/model.json"
-                ),
-                (
-                    "Parameters",
-                    "models/MODEL-A/parameters.json"
-                )
-            ]
-        )
+        self.model_management_page = ModelManagementPage()
 
-        self.mapping_page = ConfigurationPage(
-            "Serial Mapping Configuration",
-            [
-                (
-                    "Serial Mapping",
-                    "global/serial_model_mapping.json"
-                )
-            ]
-        )
+        self.model_management_page.dashboard = self.dashboard
+
+        self.model_configuration_page = ModelConfigurationPage()
+
+        self.mapping_page = SerialMappingPage()
 
         self.sequence_page = ConfigurationPage(
             "Sequence Configuration",
@@ -233,7 +214,7 @@ class MainWindow(QMainWindow):
             self.dashboard,
             self.history_page,
             self.model_management_page,
-            self.model_page,
+            self.model_configuration_page,
             self.mapping_page,
             self.sequence_page,
             self.instrument_page
@@ -370,6 +351,12 @@ class MainWindow(QMainWindow):
 
         if index == 2:
             self.model_management_page.refresh_models()
+        
+        if index == 3:
+            self.model_configuration_page.refresh_model_list()
+
+        if index == 4:
+            self.mapping_page.refresh_models()
 
         if index == 5:
             self.sequence_page.refresh_model_list()

@@ -24,8 +24,7 @@ from PySide6.QtWidgets import (
     QMessageBox
 )
 
-from app.database.database_manager import DatabaseManager
-
+from app.storage.history_repository import HistoryRepository
 
 class HistoryPage(QWidget):
 
@@ -33,7 +32,7 @@ class HistoryPage(QWidget):
 
         super().__init__(parent)
 
-        self.database = DatabaseManager()
+        self.database = HistoryRepository()
 
         self.results = []
 
@@ -285,32 +284,42 @@ class HistoryPage(QWidget):
     # FILTER OPTIONS
     # ==========================================
 
+
     def load_filter_options(self):
+
+        # Preserve current selections before rebuilding options.
+        selected_model = self.model_combo.currentData()
+        selected_judgment = self.judgment_combo.currentData()
 
         options = self.database.get_filter_options()
 
+        self.model_combo.blockSignals(True)
         self.model_combo.clear()
         self.model_combo.addItem("All Models", "")
 
         for model_id in options["models"]:
+            self.model_combo.addItem(model_id, model_id)
 
-            self.model_combo.addItem(
-                model_id,
-                model_id
-            )
+        model_index = self.model_combo.findData(selected_model)
 
+        if model_index >= 0:
+            self.model_combo.setCurrentIndex(model_index)
+
+        self.model_combo.blockSignals(False)
+
+        self.judgment_combo.blockSignals(True)
         self.judgment_combo.clear()
-        self.judgment_combo.addItem(
-            "All Judgments",
-            ""
-        )
+        self.judgment_combo.addItem("All Judgments", "")
 
         for judgment in options["judgments"]:
+            self.judgment_combo.addItem(judgment, judgment)
 
-            self.judgment_combo.addItem(
-                judgment,
-                judgment
-            )
+        judgment_index = self.judgment_combo.findData(selected_judgment)
+
+        if judgment_index >= 0:
+            self.judgment_combo.setCurrentIndex(judgment_index)
+
+        self.judgment_combo.blockSignals(False)
 
     # ==========================================
     # DATE FILTER STATE

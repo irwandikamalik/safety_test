@@ -600,7 +600,6 @@ class DashboardPage(QWidget):
             row, column, item
         )
 
-
     def load_sequence_table(self, steps):
 
         self.sequence_table.setRowCount(0)
@@ -619,9 +618,6 @@ class DashboardPage(QWidget):
                     f"expected dict, got {type(step).__name__}: {step}"
                 )
 
-            if not step.get("enabled", True):
-                continue
-
             row = self.sequence_table.rowCount()
             self.sequence_table.insertRow(row)
 
@@ -631,7 +627,6 @@ class DashboardPage(QWidget):
             )
 
             step_parameters = step.get("parameters", {})
-
             step_type = step.get("type")
             function = step_parameters.get("function")
 
@@ -660,14 +655,19 @@ class DashboardPage(QWidget):
                 lower = confirmation_parameters.get("lower", "-")
                 upper = confirmation_parameters.get("upper", "-")
 
+            status = (
+                "WAITING"
+                if step.get("enabled", True)
+                else "SKIPPED"
+            )
+
             self.set_table_item(row, 0, row + 1)
             self.set_table_item(row, 1, name)
             self.set_table_item(row, 2, description)
             self.set_table_item(row, 3, lower)
             self.set_table_item(row, 4, upper)
             self.set_table_item(row, 5, "-")
-            self.set_table_item(row, 6, "WAITING")
-
+            self.set_table_item(row, 6, status)
 
     def start_sequence(self):
 
@@ -820,30 +820,23 @@ class DashboardPage(QWidget):
 
         self.current_step_row = row
 
-        if row < self.sequence_table.rowCount():
+        if 0 <= row < self.sequence_table.rowCount():
 
-            self.sequence_table.item(
-                row, 6
-            ).setText("RUNNING")
+            item = self.sequence_table.item(row, 6)
 
-            if row > 0:
-
-                previous = self.sequence_table.item(
-                    row - 1, 6
-                )
-
-                if previous:
-                    previous.setText("OK")
+            if item:
+                item.setText("RUNNING")
 
     def on_step_finished(self, current, message):
 
         row = current - 1
 
-        if row < self.sequence_table.rowCount():
+        if 0 <= row < self.sequence_table.rowCount():
 
-            self.sequence_table.item(
-                row, 6
-            ).setText("OK")
+            item = self.sequence_table.item(row, 6)
+
+            if item:
+                item.setText("OK")
 
     def handle_interaction(self, request):
 

@@ -119,8 +119,74 @@ class ModelService:
 
 
     # --------------------------------------------------
-    # SERIAL NUMBER MODEL MAPPING
+    # SERIAL MAPPING CONFIGURATION
     # --------------------------------------------------
+
+    @staticmethod
+    def empty_serial_mapping():
+        return {
+            "start_suffix": None,
+            "end_suffix": None,
+            "expected_value": "",
+            "min_length": None,
+            "max_length": None,
+            "exact_length": None,
+            "enabled": False,
+        }
+
+    def normalize_serial_model_mapping(self, configuration):
+
+        if not isinstance(configuration, dict):
+            raise ValueError(
+                "Serial mapping configuration must be an object."
+            )
+
+        # New format.
+        if isinstance(configuration.get("models"), dict):
+            return configuration
+
+        # Legacy format migration.
+        rules = configuration.get("rules")
+
+        if not isinstance(rules, list):
+            raise ValueError(
+                "Serial mapping must contain a 'models' object."
+            )
+
+        models = {}
+
+        for rule in rules:
+
+            if not isinstance(rule, dict):
+                raise ValueError(
+                    "Invalid legacy serial mapping rule."
+                )
+
+            model_id = rule.get("model_id")
+
+            if not isinstance(model_id, str) or not model_id:
+                raise ValueError(
+                    "Legacy mapping contains an invalid model_id."
+                )
+
+            if model_id in models:
+                raise ValueError(
+                    f"Cannot automatically migrate legacy mapping: "
+                    f"multiple rules reference {model_id}. "
+                    "Resolve these rules manually first."
+                )
+
+            models[model_id] = {
+                "start_suffix": rule.get("start_suffix"),
+                "end_suffix": rule.get("end_suffix"),
+                "expected_value": rule.get("expected_value", ""),
+                "min_length": rule.get("min_length"),
+                "max_length": rule.get("max_length"),
+                "exact_length": rule.get("exact_length"),
+                "enabled": rule.get("enabled", False),
+            }
+
+        return {"models": models}
 
     def load_serial_model_mapping(self):
 
@@ -130,14 +196,149 @@ class ModelService:
 
         configuration = self.read_json(mapping_file)
 
-        rules = configuration.get("rules")
+        configuration = self.normalize_serial_model_mapping(
+            configuration
+        )
 
-        if not isinstance(rules, list):
+        self.validate_serial_model_mapping(configuration)
+
+        return configuration["models"]
+
+    def validate_serial_model_mapping(self, configuration):
+
+        configuration = self.normalize_serial_model_mapping(
+            configuration
+        )
+
+        models = configuration["models"]
+
+        if not isinstance(models, dict):
             raise ValueError(
-                "serial_model_mapping.json: rules must be a list."
+                "Serial mapping models must be an object."
             )
 
-        return rules
+        for model_id, mapping in models.items():
+
+            if (
+                not isinstance(model_id, str)
+                or not self.MODEL_ID_PATTERN.fullmatch(model_id)
+            ):
+                raise ValueError(
+                    f"Invalid model_id: {model_id}"
+                )
+
+            if not isinstance(mapping, dict):
+                raise ValueError(
+                    f"{model_id}: mapping must be an object."
+                )
+
+            enabled = mapping.get("enabled")
+
+            if not isinstance(enabled, bool):
+                raise ValueError(
+                    f"{model_id}: enabled must be boolean."
+                )
+
+            start = mapping.get("start_suffix")
+            end = mapping.get("end_suffix")
+            expected = mapping.get("expected_value", "")
+
+            min_length = mapping.get("min_length")
+            max_length = mapping.get("max_length")
+            exact_length = mapping.get("exact_length")
+
+            # Disabled and incomplete mappings are allowed.
+            if not enabled:
+                continue
+
+            # Enabled mappings must be complete.
+            if (
+                not isinstance(start, int)
+                or isinstance(start, bool)
+                or not isinstance(end, int)
+                or isinstance(end, bool)
+            ):
+                raise ValueError(
+                    f"{model_id}: start_suffix and end_suffix "
+                    "must be integers when mapping is enabled."
+                )
+
+            if start < 1 or end < start:
+                raise ValueError(
+                    f"{model_id}: invalid character positions."
+                )
+
+            if not isinstance(expected, str) or not expected.strip():
+                raise ValueError(
+                    f"{model_id}: expected_value is required."
+                )
+
+            if len(expected.strip()) != end - start + 1:
+                raise ValueError(
+                    f"{model_id}: expected_value length must equal "
+                    "end_suffix - start_suffix + 1."
+                )
+
+            length_values = {
+                "min_length": min_length,
+                "max_length": max_length,
+                "exact_length": exact_length,
+            }
+
+            for field, value in length_values.items():
+
+                if value is None:
+                    continue
+
+                if (
+                    not isinstance(value, int)
+                    or isinstance(value, bool)
+                    or value < 1
+                ):
+                    raise ValueError(
+                        f"{model_id}: {field} must be "
+                        "a positive integer."
+                    )
+
+            if exact_length is not None:
+
+                if min_length is not None or max_length is not None:
+                    raise ValueError(
+                        f"{model_id}: exact_length cannot be combined "
+                        "with min_length or max_length."
+                    )
+
+                if exact_length < end:
+                    raise ValueError(
+                        f"{model_id}: exact_length cannot be "
+                        "smaller than end_suffix."
+                    )
+
+            else:
+
+                if (
+                    min_length is not None
+                    and max_length is not None
+                    and min_length > max_length
+                ):
+                    raise ValueError(
+                        f"{model_id}: min_length cannot exceed "
+                        "max_length."
+                    )
+
+                if min_length is not None and min_length < end:
+                    raise ValueError(
+                        f"{model_id}: min_length cannot be "
+                        "smaller than end_suffix."
+                    )
+
+                if max_length is not None and max_length < end:
+                    raise ValueError(
+                        f"{model_id}: max_length cannot be "
+                        "smaller than end_suffix."
+                    )
+
+        return True
 
     def resolve_model_by_serial(self, serial_number):
 
@@ -153,64 +354,152 @@ class ModelService:
                 "Serial number cannot be empty."
             )
 
-        rules = self.load_serial_model_mapping()
+        configuration = self.normalize_serial_model_mapping(
+            self.read_json(
+                self.global_root / "serial_model_mapping.json"
+            )
+        )
+
+        self.validate_serial_model_mapping(configuration)
+
+        serial_length = len(serial_number)
+        matched_models = []
+
+        for model_id, mapping in configuration["models"].items():
+
+            if mapping["enabled"] is not True:
+                continue
+
+            start = mapping["start_suffix"]
+            end = mapping["end_suffix"]
+            expected = mapping["expected_value"]
+
+            min_length = mapping.get("min_length")
+            max_length = mapping.get("max_length")
+            exact_length = mapping.get("exact_length")
+
+            if exact_length is not None:
+
+                if serial_length != exact_length:
+                    continue
+
+            else:
+
+                if (
+                    min_length is not None
+                    and serial_length < min_length
+                ):
+                    continue
+
+                if (
+                    max_length is not None
+                    and serial_length > max_length
+                ):
+                    continue
+
+            actual_value = serial_number[start - 1:end]
+
+            if len(actual_value) != end - start + 1:
+                continue
+
+            if actual_value == expected.strip().upper():
+
+                matched_models.append({
+                    "model_id": model_id,
+                    "start_suffix": start,
+                    "end_suffix": end,
+                    "expected_value": expected.upper(),
+                    "matched_value": actual_value,
+                    "serial_length": serial_length,
+                })
+
+        if not matched_models:
+            raise ValueError(
+                "No model mapping found for serial number: "
+                f"{serial_number}"
+            )
+
+        if len(matched_models) > 1:
+
+            model_ids = ", ".join(
+                item["model_id"]
+                for item in matched_models
+            )
+
+            raise ValueError(
+                "Ambiguous serial number mapping. "
+                f"Multiple models matched: {model_ids}"
+            )
+
+        return {
+            "serial_number": serial_number,
+            **matched_models[0],
+        }
+
+
+    def resolve_model_by_serial(self, serial_number):
+
+        if not isinstance(serial_number, str):
+            raise ValueError(
+                "Serial number must be a string."
+            )
+
+        serial_number = serial_number.strip().upper()
+
+        if not serial_number:
+            raise ValueError(
+                "Serial number cannot be empty."
+            )
+
+        mapping_file = (
+            self.global_root / "serial_model_mapping.json"
+        )
+
+        configuration = self.read_json(mapping_file)
+
+        self.validate_serial_model_mapping(configuration)
+
+        rules = configuration["rules"]
+        serial_length = len(serial_number)
 
         matched_rules = []
 
         for rule in rules:
 
-            if not isinstance(rule, dict):
-                raise ValueError(
-                    "Each serial mapping rule must be an object."
-                )
-
-            if rule.get("enabled") is not True:
+            if rule["enabled"] is not True:
                 continue
 
-            rule_id = rule.get("rule_id")
-            start = rule.get("start_suffix")
-            end = rule.get("end_suffix")
-            expected = rule.get("expected_value")
-            model_id = rule.get("model_id")
+            rule_id = rule["rule_id"]
+            start = rule["start_suffix"]
+            end = rule["end_suffix"]
+            expected = rule["expected_value"]
+            model_id = rule["model_id"]
 
-            if not isinstance(rule_id, str) or not rule_id.strip():
-                raise ValueError(
-                    "Each rule must have a valid rule_id."
-                )
+            min_length = rule.get("min_length")
+            max_length = rule.get("max_length")
+            exact_length = rule.get("exact_length")
 
-            if (
-                not isinstance(start, int)
-                or isinstance(start, bool)
-                or not isinstance(end, int)
-                or isinstance(end, bool)
-            ):
-                raise ValueError(
-                    f"{rule_id}: start_suffix and end_suffix "
-                    "must be integers."
-                )
+            # Check total serial number length.
+            if exact_length is not None:
 
-            if start < 1 or end < start:
-                raise ValueError(
-                    f"{rule_id}: invalid character positions."
-                )
+                if serial_length != exact_length:
+                    continue
 
-            if not isinstance(expected, str) or not expected:
-                raise ValueError(
-                    f"{rule_id}: expected_value is required."
-                )
+            else:
 
-            if not isinstance(model_id, str):
-                raise ValueError(
-                    f"{rule_id}: model_id must be a string."
-                )
+                if (
+                    min_length is not None
+                    and serial_length < min_length
+                ):
+                    continue
 
-            if not self.MODEL_ID_PATTERN.fullmatch(model_id):
-                raise ValueError(
-                    f"{rule_id}: invalid model_id."
-                )
+                if (
+                    max_length is not None
+                    and serial_length > max_length
+                ):
+                    continue
 
-            # Python uses zero-based indexing.
-            # The configured end position is inclusive.
+            # Character positions are 1-based and inclusive.
             actual_value = serial_number[start - 1:end]
 
             if len(actual_value) != end - start + 1:
@@ -224,7 +513,8 @@ class ModelService:
                     "start_suffix": start,
                     "end_suffix": end,
                     "expected_value": expected.upper(),
-                    "matched_value": actual_value
+                    "matched_value": actual_value,
+                    "serial_length": serial_length
                 })
 
         if not matched_rules:
@@ -252,7 +542,6 @@ class ModelService:
             "serial_number": serial_number,
             **result
         }
-
 
     # --------------------------------------------------
     # MODEL DISCOVERY
@@ -651,27 +940,16 @@ class ModelService:
     # SERIAL MAPPING DEPENDENCY
     # --------------------------------------------------
 
+
     def get_model_mapping_references(self, model_id):
 
-        rules = self.load_serial_model_mapping()
+        mappings = self.load_serial_model_mapping()
 
-        references = []
+        if model_id in mappings:
+            return [f"Serial Mapping ({model_id})"]
 
-        for rule in rules:
+        return []
 
-            if not isinstance(rule, dict):
-
-                raise ValueError(
-                    "Invalid serial mapping rule."
-                )
-
-            if rule.get("model_id") == model_id:
-
-                references.append(
-                    rule.get("rule_id", "Unknown rule")
-                )
-
-        return references
 
     # --------------------------------------------------
     # DELETE MODEL

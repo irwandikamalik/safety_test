@@ -227,9 +227,9 @@ QLineEdit:focus {
 ========================================== */
 
 QTextEdit, QPlainTextEdit {
-    background: #101A27;
-    color: #D6E1EE;
-    border: 1px solid #26374D;
+    background-color: #FFFFFF;
+    color: #172B4D;
+    border: 1px solid #CCD5E0;
     border-radius: 7px;
     padding: 10px;
     font-family: Consolas;
@@ -498,5 +498,101 @@ QDialog QPushButton#DangerButton {
     background-color: #B93838;
     color: white;
     border: none;
+}
+
+QComboBox {
+    background-color: #FFFFFF;
+    color: #263449;
+    border: 1px solid #CCD5E0;
+    border-radius: 6px;
+    padding: 7px 9px;
+    min-height: 20px;
+}
+
+QComboBox:hover {
+    border: 1px solid #AABBCD;
+}
+
+QComboBox:focus {
+    border: 1px solid #287FC0;
+}
+
+QComboBox::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 28px;
+    border-left: 1px solid #CCD5E0;
+}
+
+QComboBox QAbstractItemView {
+    background-color: #FFFFFF;
+    color: #263449;
+    border: 1px solid #CCD5E0;
+    selection-background-color: #1769AA;
+    selection-color: #FFFFFF;
+    outline: none;
+}
+
+QComboBox QAbstractItemView::item {
+    min-height: 28px;
+    padding: 5px 8px;
+}
+
+QComboBox QAbstractItemView::item:hover {
+    background-color: #E8EDF3;
+    color: #263449;
+}
+
+QComboBox::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 28px;
+    border-left: 1px solid #CCD5E0;
+    background-color: #F3F6F9;
+}
+
+QComboBox::down-arrow {
+    image: url(assets/icons/chevron-down.svg);
+    width: 12px;
+    height: 12px;
+}
+
+/* MODEL CONFIGURATION FORM */
+
+QWidget#ModelFormContainer {
+    background-color: #F3F5F8;
+}
+
+QWidget#ModelFormContainer QGroupBox {
+    background-color: white;
+    color: #263449;
+    border: 1px solid #E0E6ED;
+    border-radius: 8px;
+    margin-top: 12px;
+    padding: 12px;
+}
+
+QWidget#ModelFormContainer QLabel {
+    background-color: transparent;
+    color: #263449;
+}
+
+QWidget#ModelFormContainer QLineEdit,
+QWidget#ModelFormContainer QSpinBox,
+QWidget#ModelFormContainer QDoubleSpinBox {
+    background-color: white;
+    color: #263449;
+    border: 1px solid #CCD5E0;
+    border-radius: 6px;
+    padding: 7px;
+}
+
+QWidget#ModelFormContainer QCheckBox {
+    background-color: transparent;
+    color: #263449;
+}
+
+QScrollArea QWidget#qt_scrollarea_viewport {
+    background-color: #F3F5F8;
 }
 """
