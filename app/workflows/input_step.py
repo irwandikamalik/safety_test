@@ -1,4 +1,3 @@
-
 from app.workflows.base_step import (
     BaseStep,
     StepOutcome
@@ -11,9 +10,7 @@ class InputStep(BaseStep):
 
     def execute(self, context):
 
-        parameters = self.configuration.get(
-            "parameters", {}
-        )
+        parameters = self.parameters
 
         field = parameters.get("field")
 
@@ -28,31 +25,35 @@ class InputStep(BaseStep):
             message="Waiting for operator input.",
             interaction={
                 "type": "input",
-                "title": self.configuration.get(
-                    "name", "Operator Input"
-                ),
+                "title": self.name,
                 "field": field,
                 "label": parameters.get(
-                    "label", field.replace("_", " ").title()
+                    "label",
+                    field.replace("_", " ").title()
                 ),
                 "placeholder": parameters.get(
-                    "placeholder", "Enter value"
+                    "placeholder",
+                    "Enter value"
                 ),
                 "required": parameters.get(
-                    "required", True
+                    "required",
+                    True
                 )
             }
         )
 
     def complete(self, context, response):
 
-        field = self.configuration["parameters"]["field"]
+        field = self.parameters["field"]
 
-        value = str(response.get("value", "")).strip()
+        value = str(
+            response.get("value", "")
+        ).strip()
 
-        required = self.configuration.get(
-            "parameters", {}
-        ).get("required", True)
+        required = self.parameters.get(
+            "required",
+            True
+        )
 
         if required and not value:
             return StepOutcome(
@@ -65,5 +66,7 @@ class InputStep(BaseStep):
         return StepOutcome(
             success=True,
             message=f"{field} received.",
-            data={field: value}
+            data={
+                field: value
+            }
         )

@@ -1,0 +1,78 @@
+======================================================================
+TEST ID: 084aed53-fb2c-4cdb-bb2d-5bf6a3d2d975
+======================================================================
+{
+    "system": {
+        "test_id": "084aed53-fb2c-4cdb-bb2d-5bf6a3d2d975",
+        "timestamp": "2026-11-22T10:00:00+07:00",
+        "model_id": "MODEL-A",
+        "model_name": "Product Model A",
+        "sequence_id": "test_sequence",
+        "application_mode": "SIMULATION"
+    },
+    "operator": {
+        "id": "049928",
+        "name": "Irwandika",
+        "rule": "admin"
+    },
+    "product": {
+        "serial_number": "SN001",
+        "door_top": "123",
+        "door_bottom": "456"
+    },
+    "measurements": {
+        "step_001": {
+            "function": "acw",
+            "test_voltage_V": 1400.0,
+            "measured_current_mA": 0.42,
+            "judgment": "PASS"
+        }
+    },
+    "test_judgments": {
+        "step_001": "PASS"
+    },
+    "result": {
+        "judgment": "PASS"
+    },
+    "custom": {}
+}
+
+======================================================================
+TEST ID: 48f8e645-924f-475d-a7af-86a86dcbd57e
+======================================================================
+{
+    "system": {
+        "test_id": "48f8e645-924f-475d-a7af-86a86dcbd57e",
+        "timestamp": "2026-11-22T10:00:00+07:00",
+        "model_id": "MODEL-A",
+        "model_name": "Product Model A",
+        "sequence_id": "test_sequence",
+        "application_mode": "SIMULATION"
+    },
+    "operator": {
+        "id": "049928",
+        "name": "Irwandika",
+        "rule": "admin"
+    },
+    "product": {
+        "serial_number": "SN001",
+        "door_top": "123",
+        "door_bottom": "456"
+    },
+    "measurements": {
+        "step_001": {
+            "function": "acw",
+            "test_voltage_V": 1400.0,
+            "measured_current_mA": 0.42,
+            "judgment": "PASS"
+        }
+    },
+    "test_judgments": {
+        "step_001": "PASS"
+    },
+    "result": {
+        "judgment": "PASS"
+    },
+    "custom": {}
+}
+

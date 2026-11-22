@@ -2,6 +2,7 @@
 import threading
 import time
 
+from copy import deepcopy
 from datetime import datetime
 
 from PySide6.QtCore import QThread, Signal
@@ -39,28 +40,76 @@ class MeasurementWorker(QThread):
 
         self.stop_event = threading.Event()
 
+        self.partial_result = None
+        self.error_message = None
+        self.cancelled = False
+
     def request_stop(self):
 
         self.stop_event.set()
 
+    def _build_measurement_result(
+        self,
+        samples,
+        last_result,
+        started_at,
+        partial
+    ):
+
+        if not samples or last_result is None:
+            return None
+
+        last_sample = samples[-1]
+
+        elapsed = 0.0
+
+        if started_at is not None:
+            elapsed = time.monotonic() - started_at
+
+        return {
+            "instrument": last_result.get(
+                "instrument",
+                self.instrument_id
+            ),
+            "measurements": deepcopy(
+                last_sample["measurements"]
+            ),
+            "samples": deepcopy(samples),
+            "sample_count": len(samples),
+            "duration_s": round(elapsed, 3),
+            "sample_interval_s": self.sample_interval_s,
+            "simulation": last_result.get(
+                "simulation",
+                False
+            ),
+            "partial": partial
+        }
+
     def run(self):
 
+        self.partial_result = None
+        self.error_message = None
+        self.cancelled = False
+
         if self.instrument_id != "wt310e":
-            self.measurement_failed.emit(
+            self.error_message = (
                 "Live hardware measurement is restricted to WT310E."
             )
+            self.measurement_failed.emit(self.error_message)
             return
 
         if self.duration_s <= 0:
-            self.measurement_failed.emit(
+            self.error_message = (
                 "Measurement duration must be greater than zero."
             )
+            self.measurement_failed.emit(self.error_message)
             return
 
         if self.sample_interval_s <= 0:
-            self.measurement_failed.emit(
+            self.error_message = (
                 "Sample interval must be greater than zero."
             )
+            self.measurement_failed.emit(self.error_message)
             return
 
         manager = None
@@ -69,17 +118,19 @@ class MeasurementWorker(QThread):
         samples = []
         result = None
         final_result = None
-        error_message = None
+
+        started_at = None
 
         try:
 
-            # ModelService supplies the instrument mapping.
-            # InstrumentManager expects an object containing
-            # the "instruments" property.
-            # Normalize model instrument configuration.
             if "instruments" in self.model_instruments:
-                normalized_model_configuration = self.model_instruments
+
+                normalized_model_configuration = (
+                    self.model_instruments
+                )
+
             else:
+
                 normalized_model_configuration = {
                     "instruments": self.model_instruments
                 }
@@ -128,8 +179,7 @@ class MeasurementWorker(QThread):
                 print(
                     "WT310E: Running in simulation mode."
                 )
-                
-            # Start measurement timer AFTER successful connection.
+
             started_at = time.monotonic()
             next_sample_at = started_at
 
@@ -140,7 +190,6 @@ class MeasurementWorker(QThread):
                 if elapsed >= self.duration_s:
                     break
 
-                # Read actual WT310E measurements.
                 result = manager.read_measurements(
                     self.instrument_id,
                     measurement_ids=self.measurement_ids
@@ -163,6 +212,15 @@ class MeasurementWorker(QThread):
 
                 samples.append(sample)
 
+                self.partial_result = (
+                    self._build_measurement_result(
+                        samples,
+                        result,
+                        started_at,
+                        partial=True
+                    )
+                )
+
                 self.sample_received.emit(
                     sample["measurements"],
                     sample_number,
@@ -183,56 +241,74 @@ class MeasurementWorker(QThread):
                 if self.stop_event.wait(wait_time):
                     break
 
-            if self.stop_event.is_set():
-                return
+            if not self.stop_event.is_set():
 
-            if not samples:
-                raise RuntimeError(
-                    "No measurement samples were received."
+                if not samples:
+                    raise RuntimeError(
+                        "No measurement samples were received."
+                    )
+
+                final_result = (
+                    self._build_measurement_result(
+                        samples,
+                        result,
+                        started_at,
+                        partial=False
+                    )
                 )
-
-            last_sample = samples[-1]
-
-            final_result = {
-                "instrument": result.get(
-                    "instrument",
-                    self.instrument_id
-                ),
-                "measurements": last_sample["measurements"],
-                "samples": samples,
-                "sample_count": len(samples),
-                "duration_s": round(
-                    time.monotonic() - started_at, 3
-                ),
-                "sample_interval_s": self.sample_interval_s,
-                "simulation": result.get("simulation", False)
-            }
 
         except Exception as error:
 
-            error_message = str(error)
+            self.error_message = str(error)
 
         finally:
 
             if connected and manager is not None:
 
                 try:
+
                     manager.disconnect(self.instrument_id)
 
                 except Exception as error:
 
-                    if error_message is None:
-                        error_message = (
-                            f"Failed to disconnect WT310E: {error}"
-                        )
+                    disconnect_error = (
+                        f"Failed to disconnect WT310E: {error}"
+                    )
 
-        # Send completion only after disconnect.
-        if self.stop_event.is_set():
+                    if self.error_message:
+                        self.error_message += (
+                            f" | {disconnect_error}"
+                        )
+                    else:
+                        self.error_message = disconnect_error
+
+        self.cancelled = (
+            self.stop_event.is_set()
+            and self.error_message is None
+        )
+
+        if self.partial_result is not None:
+
+            self.partial_result["cancelled"] = self.cancelled
+
+            if started_at is not None:
+                self.partial_result["duration_s"] = round(
+                    time.monotonic() - started_at,
+                    3
+                )
+
+        if self.error_message:
+
+            self.measurement_failed.emit(
+                self.error_message
+            )
             return
 
-        if error_message:
-            self.measurement_failed.emit(error_message)
+        if self.cancelled:
             return
 
         if final_result is not None:
-            self.measurement_completed.emit(final_result)
+
+            self.measurement_completed.emit(
+                final_result
+            )

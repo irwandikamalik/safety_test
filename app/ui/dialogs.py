@@ -933,6 +933,8 @@ class ACVoltConfirmationDialog(QDialog):
         self.is_passed = False
         self.value_labels = {}
 
+        self.cancel_requested_once = False
+
         self.setWindowTitle("AC Volt Confirmation")
         self.setMinimumSize(680, 540)
         self.resize(720, 600)
@@ -1392,6 +1394,12 @@ class ACVoltConfirmationDialog(QDialog):
 
         if self.is_running:
 
+            # Hindari mengirim cancel berkali-kali.
+            if self.cancel_requested_once:
+                return
+
+            self.cancel_requested_once = True
+
             self.cancel_button.setEnabled(False)
             self.enable_button.setEnabled(False)
             self.ok_button.setEnabled(False)
@@ -1405,6 +1413,29 @@ class ACVoltConfirmationDialog(QDialog):
 
         else:
             self.reject()
+
+    def finish_abort(self, message=""):
+
+        self.is_running = False
+
+        self.status_label.setText(
+            "WORKFLOW ABORTED"
+        )
+
+        self.reject()
+    
+    def closeEvent(self, event):
+
+        if self.is_running:
+
+            # X tidak boleh menutup dialog sebelum
+            # worker menyelesaikan safe shutdown.
+            self.cancel_confirmation()
+
+            event.ignore()
+            return
+
+        event.accept()
 
     def keyPressEvent(self, event):
 

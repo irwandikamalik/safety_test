@@ -61,3 +61,4 @@ safety_test.zip
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+scripts

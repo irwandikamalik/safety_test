@@ -65,6 +65,22 @@
                     "voltage_frequency"
                 ]
             }
+        },
+        {
+            "id": "build_final_result",
+            "type": "build_result",
+            "name": "Build Final Result",
+            "enabled": true,
+            "parameters": {}
+        },
+        {
+            "id": "save_final_result",
+            "type": "save_result",
+            "name": "Save Final Result",
+            "enabled": true,
+            "parameters": {
+                "source": "result"
+            }
         }
     ]
 }

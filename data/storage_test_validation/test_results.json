@@ -1,0 +1,72 @@
+[
+    {
+        "system": {
+            "test_id": "8fcb3215-e5b9-4fd8-9648-7ea19dd5a2bc",
+            "timestamp": "2026-11-22T10:00:00+07:00",
+            "model_id": "MODEL-A",
+            "model_name": "Product Model A",
+            "sequence_id": "test_sequence",
+            "application_mode": "SIMULATION"
+        },
+        "operator": {
+            "id": "049928",
+            "name": "Irwandika",
+            "rule": "admin"
+        },
+        "product": {
+            "serial_number": "SN001",
+            "door_top": "123",
+            "door_bottom": "456"
+        },
+        "measurements": {
+            "step_001": {
+                "function": "acw",
+                "test_voltage_V": 1400.0,
+                "measured_current_mA": 0.42,
+                "judgment": "PASS"
+            }
+        },
+        "test_judgments": {
+            "step_001": "PASS"
+        },
+        "result": {
+            "judgment": "PASS"
+        },
+        "custom": {}
+    },
+    {
+        "system": {
+            "test_id": "d241f1f4-462f-4642-9067-31c4e0a55a35",
+            "timestamp": "2026-11-22T10:00:00+07:00",
+            "model_id": "MODEL-A",
+            "model_name": "Product Model A",
+            "sequence_id": "test_sequence",
+            "application_mode": "SIMULATION"
+        },
+        "operator": {
+            "id": "049928",
+            "name": "Irwandika",
+            "rule": "admin"
+        },
+        "product": {
+            "serial_number": "SN001",
+            "door_top": "123",
+            "door_bottom": "456"
+        },
+        "measurements": {
+            "step_001": {
+                "function": "acw",
+                "test_voltage_V": 1400.0,
+                "measured_current_mA": 0.42,
+                "judgment": "PASS"
+            }
+        },
+        "test_judgments": {
+            "step_001": "PASS"
+        },
+        "result": {
+            "judgment": "PASS"
+        },
+        "custom": {}
+    }
+]

@@ -81,6 +81,11 @@ class ACVoltConfirmationWorker(QThread):
 
         self.final_result = None
 
+        self.output_off_verified = False
+        self.shutdown_success = False
+        self.shutdown_error = None
+        self.error_message = None
+
     # ==================================================
     # OPERATOR CONTROL
     # ==================================================
@@ -349,21 +354,22 @@ class ACVoltConfirmationWorker(QThread):
             )
 
         except Exception as error:
-
             shutdown_error = None
 
             if not self.shutdown_attempted:
                 shutdown_error = self._safe_shutdown()
+            else:
+                shutdown_error = self.shutdown_error
 
             message = str(error)
 
             if shutdown_error:
                 message += (
-                    "\n\nCRITICAL: Failed to verify "
-                    "PCR500M output OFF: "
+                    "\n\nSAFE SHUTDOWN FAILURE: "
                     + shutdown_error
                 )
 
+            self.error_message = message
             self.failed.emit(message)
 
     # ==================================================
@@ -619,27 +625,27 @@ class ACVoltConfirmationWorker(QThread):
     # ==================================================
     # SAFE SHUTDOWN
     # ==================================================
-    def _shutdown_instruments(self):
 
+    def _shutdown_instruments(self):
 
         if self.shutdown_attempted:
             raise RuntimeError(
                 "PCR500M shutdown was already attempted. "
                 "Manual safety recovery is required."
             )
+
         self.shutdown_attempted = True
 
         errors = []
         output_off_confirmed = False
 
-        # ==============================================
-        # PCR500M OUTPUT OFF AND VERIFICATION
-        # ==============================================
+        # ==========================================
+        # PCR500M OUTPUT OFF
+        # ==========================================
 
         if self.power_supply_connected:
 
             try:
-
                 self.status_changed.emit(
                     "Verifying PCR500M output OFF..."
                 )
@@ -653,29 +659,32 @@ class ACVoltConfirmationWorker(QThread):
                         "PCR500M output OFF was not confirmed."
                     )
 
-                self.output_activated = False
                 output_off_confirmed = True
+                self.output_off_verified = True
+                self.output_activated = False
 
                 self.status_changed.emit(
                     "PCR500M output OFF verified."
                 )
 
             except Exception as error:
-
                 errors.append(
                     f"PCR500M Output OFF failed: {error}"
                 )
 
-                output_off_confirmed = False
+        else:
+            errors.append(
+                "CRITICAL: PCR500M output OFF cannot be verified "
+                "because PCR500M is not connected."
+            )
 
-        # ==============================================
+        # ==========================================
         # WT310E DISCONNECT
-        # ==============================================
+        # ==========================================
 
         if self.power_meter_connected:
 
             try:
-
                 self.instrument_manager.disconnect(
                     self.power_meter_id
                 )
@@ -683,22 +692,18 @@ class ACVoltConfirmationWorker(QThread):
                 self.power_meter_connected = False
 
             except Exception as error:
-
                 errors.append(
                     f"WT310E disconnect failed: {error}"
                 )
 
-        # ==============================================
+        # ==========================================
         # PCR500M DISCONNECT
-        # ==============================================
-
-        # Never disconnect PCR500M unless output OFF
-        # has been explicitly verified.
+        # HANYA JIKA OUTPUT OFF TERVERIFIKASI
+        # ==========================================
 
         if self.power_supply_connected and output_off_confirmed:
 
             try:
-
                 self.instrument_manager.disconnect(
                     self.power_supply_id
                 )
@@ -706,7 +711,6 @@ class ACVoltConfirmationWorker(QThread):
                 self.power_supply_connected = False
 
             except Exception as error:
-
                 errors.append(
                     f"PCR500M disconnect failed: {error}"
                 )
@@ -719,20 +723,27 @@ class ACVoltConfirmationWorker(QThread):
                 "Check PCR500M front panel immediately."
             )
 
-        # ==============================================
-        # REPORT
-        # ==============================================
+        # ==========================================
+        # FINAL SHUTDOWN STATUS
+        # ==========================================
 
-        if errors:
+        self.shutdown_success = (
+            output_off_confirmed and not errors
+        )
 
+        self.shutdown_error = (
+            " | ".join(errors) if errors else None
+        )
+
+        if not self.shutdown_success:
             raise RuntimeError(
-                " | ".join(errors)
+                self.shutdown_error
+                or "PCR500M safe shutdown was not verified."
             )
 
         self.status_changed.emit(
             "Instrument shutdown completed."
         )
-
 
     def _safe_shutdown(self):
 

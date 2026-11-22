@@ -1,0 +1,113 @@
+======================================================================
+TEST ID: COMPLETED-txt-54d97af6
+======================================================================
+{
+    "system": {
+        "test_id": "COMPLETED-txt-54d97af6",
+        "timestamp": "2026-11-22T10:51:29+07:00",
+        "model_id": "MODEL-A",
+        "model_name": "Model A",
+        "sequence_id": "test_sequence",
+        "application_mode": "SIMULATION",
+        "execution_status": "COMPLETED"
+    },
+    "operator": {
+        "id": "OP001",
+        "name": "Operator Test"
+    },
+    "product": {
+        "serial_number": "SN001",
+        "door_top": "DT001",
+        "door_bottom": "DB001"
+    },
+    "measurements": {
+        "step_001": {
+            "voltage": 24.0,
+            "current": 0.15
+        }
+    },
+    "test_judgments": {
+        "step_001": "PASS"
+    },
+    "result": {
+        "judgment": "PASS"
+    },
+    "custom": {}
+}
+
+======================================================================
+TEST ID: ERROR-txt-3e868815
+======================================================================
+{
+    "system": {
+        "test_id": "ERROR-txt-3e868815",
+        "timestamp": "2026-11-22T10:51:29+07:00",
+        "model_id": "MODEL-A",
+        "model_name": "Model A",
+        "sequence_id": "test_sequence",
+        "application_mode": "SIMULATION",
+        "execution_status": "ERROR"
+    },
+    "operator": {
+        "id": "OP001",
+        "name": "Operator Test"
+    },
+    "product": {
+        "serial_number": "SN001",
+        "door_top": "DT001",
+        "door_bottom": "DB001"
+    },
+    "measurements": {
+        "step_001": {
+            "voltage": 24.0,
+            "current": 0.15
+        }
+    },
+    "test_judgments": {
+        "step_001": "PASS"
+    },
+    "result": {
+        "judgment": null,
+        "reason": "Instrument communication failed."
+    },
+    "custom": {}
+}
+
+======================================================================
+TEST ID: ABORTED-txt-b608cf35
+======================================================================
+{
+    "system": {
+        "test_id": "ABORTED-txt-b608cf35",
+        "timestamp": "2026-11-22T10:51:29+07:00",
+        "model_id": "MODEL-A",
+        "model_name": "Model A",
+        "sequence_id": "test_sequence",
+        "application_mode": "SIMULATION",
+        "execution_status": "ABORTED"
+    },
+    "operator": {
+        "id": "OP001",
+        "name": "Operator Test"
+    },
+    "product": {
+        "serial_number": "SN001",
+        "door_top": "DT001",
+        "door_bottom": "DB001"
+    },
+    "measurements": {
+        "step_001": {
+            "voltage": 24.0,
+            "current": 0.15
+        }
+    },
+    "test_judgments": {
+        "step_001": "PASS"
+    },
+    "result": {
+        "judgment": null,
+        "reason": "Operator cancelled workflow."
+    },
+    "custom": {}
+}
+

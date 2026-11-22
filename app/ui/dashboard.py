@@ -298,6 +298,10 @@ class DashboardPage(QWidget):
         engine.ac_volt_failed.connect(
             dialog.show_error
         )
+ 
+        engine.aborted.connect(
+            dialog.finish_abort
+        )
 
         try:
 
@@ -320,6 +324,7 @@ class DashboardPage(QWidget):
                 (engine.ac_volt_evaluation_passed, dialog.show_pass),
                 (engine.ac_volt_completed, dialog.finish_confirmation),
                 (engine.ac_volt_failed, dialog.show_error),
+                (engine.aborted, dialog.finish_abort),
             ]
 
             for signal, slot in connections:
