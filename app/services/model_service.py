@@ -7,6 +7,8 @@ import re
 
 from pathlib import Path
 
+from app.core.workflow_validator import WorkflowValidator
+
 
 class ModelService:
 
@@ -751,13 +753,12 @@ class ModelService:
 
         return configuration
 
+
     # --------------------------------------------------
     # MODEL VALIDATION
     # --------------------------------------------------
 
     def validate_model(self, model_id):
-
-        errors = []
 
         try:
 
@@ -765,9 +766,18 @@ class ModelService:
                 model_id
             )
 
+            validator = WorkflowValidator()
+
+            return validator.validate(
+                configuration,
+                expected_model_id=model_id
+            )
+
         except (
             ValueError,
             OSError,
+            TypeError,
+            KeyError,
             json.JSONDecodeError
         ) as error:
 
@@ -775,200 +785,3 @@ class ModelService:
                 "valid": False,
                 "errors": [str(error)]
             }
-
-        model = configuration["model"]
-        sequence = configuration["sequence"]
-        instruments = configuration["instruments"]
-        parameters = configuration["parameters"]
-
-        catalog = configuration[
-            "instrument_catalog"
-        ]
-
-        # MODEL VALIDATION
-
-        if model.get("model_id") != model_id:
-
-            errors.append(
-                "model.json: model_id does not match folder name."
-            )
-
-        if not model.get("model_name"):
-
-            errors.append(
-                "model.json: model_name is required."
-            )
-
-        if model.get("enabled") is not True:
-
-            errors.append(
-                "Model is disabled."
-            )
-
-        # SEQUENCE VALIDATION
-
-        steps = sequence.get("steps")
-
-        if not isinstance(steps, list) or not steps:
-
-            errors.append(
-                "sequence.json: steps must be a non-empty list."
-            )
-
-        else:
-
-            step_ids = set()
-
-            for index, step in enumerate(steps):
-
-                prefix = f"Step {index + 1}"
-
-                if not isinstance(step, dict):
-
-                    errors.append(
-                        f"{prefix}: configuration must be an object."
-                    )
-
-                    continue
-
-                step_id = step.get("id")
-
-                if not step_id:
-
-                    errors.append(
-                        f"{prefix}: id is required."
-                    )
-
-                elif step_id in step_ids:
-
-                    errors.append(
-                        f"{prefix}: duplicate step ID '{step_id}'."
-                    )
-
-                else:
-
-                    step_ids.add(step_id)
-
-                if step.get("enabled", True) is not True:
-                    continue
-
-                if step.get("type") != "instrument_test":
-                    continue
-
-                step_parameters = step.get(
-                    "parameters", {}
-                )
-
-                instrument_id = step_parameters.get(
-                    "instrument"
-                )
-
-                function = step_parameters.get(
-                    "function"
-                )
-
-                if not instrument_id or not function:
-
-                    errors.append(
-                        f"{prefix}: instrument and function are required."
-                    )
-
-                    continue
-
-                model_instrument = (
-                    instruments.get(
-                        "instruments", {}
-                    ).get(instrument_id)
-                )
-
-                if model_instrument is None:
-
-                    errors.append(
-                        f"{prefix}: instrument '{instrument_id}' "
-                        "is not mapped in model instruments.json."
-                    )
-
-                    continue
-
-                if model_instrument.get("enabled") is not True:
-
-                    errors.append(
-                        f"{prefix}: instrument '{instrument_id}' "
-                        "is disabled for this model."
-                    )
-
-                    continue
-
-                catalog_id = model_instrument.get(
-                    "catalog_id"
-                )
-
-                catalog_instrument = (
-                    catalog.get(
-                        "instruments", {}
-                    ).get(catalog_id)
-                )
-
-                if catalog_instrument is None:
-
-                    errors.append(
-                        f"{prefix}: catalog instrument "
-                        f"'{catalog_id}' does not exist."
-                    )
-
-                    continue
-
-                supported_functions = (
-                    catalog_instrument.get(
-                        "supported_functions", []
-                    )
-                )
-
-                if function not in supported_functions:
-
-                    errors.append(
-                        f"{prefix}: function '{function}' "
-                        f"is not supported by '{catalog_id}'."
-                    )
-
-        # PARAMETER VALIDATION
-        test_parameters = parameters.get(
-            "test_parameters"
-        )
-
-        if not isinstance(test_parameters, dict):
-
-            errors.append(
-                "parameters.json: test_parameters must be an object."
-            )
-
-        # APPLICATION MODE VALIDATION
-
-        application_mode = configuration[
-            "application"
-        ].get("application_mode")
-
-        if application_mode not in (
-            "SIMULATION",
-            "HARDWARE"
-        ):
-
-            errors.append(
-                "application.json: invalid application_mode."
-            )
-
-        if (
-            application_mode == "HARDWARE"
-            and configuration["application"].get(
-                "allow_hardware_mode"
-            ) is not True
-        ):
-
-            errors.append(
-                "Hardware mode is not enabled by application policy."
-            )
-
-        return {
-            "valid": len(errors) == 0,
-            "errors": errors
-        }

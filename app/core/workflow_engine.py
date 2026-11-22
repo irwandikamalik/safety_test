@@ -6,6 +6,7 @@ from app.core.workflow_step_runtime import WorkflowStepRuntime
 
 from app.workflows.base_step import StepOutcome
 from app.workflows.build_result_step import BuildResultStep
+from app.core.workflow_validator import WorkflowValidator
 
 from app.instruments.instrument_manager import InstrumentManager
 from app.instruments.measurement_worker import MeasurementWorker
@@ -51,7 +52,28 @@ class WorkflowEngine(QObject):
 
         super().__init__(parent)
 
+        # ------------------------------------------
+        # WORKFLOW CONFIGURATION PREFLIGHT
+        # ------------------------------------------
+
+        validation = WorkflowValidator().validate(
+            model_configuration
+        )
+
+        if not validation["valid"]:
+
+            error_message = (
+                "Workflow configuration validation failed:\n"
+                + "\n".join(
+                    f"- {error}"
+                    for error in validation["errors"]
+                )
+            )
+
+            raise ValueError(error_message)
+
         self.model_configuration = model_configuration
+
 
         self.model = model_configuration["model"]
         self.sequence_configuration = model_configuration["sequence"]
@@ -151,14 +173,50 @@ class WorkflowEngine(QObject):
     # WORKFLOW CONTROL
     # ==========================================
 
+
     def start(self):
 
         if self.running:
             return
 
-        if not self.steps:
-            self.failed.emit("Sequence has no steps.")
+
+        # ------------------------------------------
+        # WORKFLOW PREFLIGHT VALIDATION
+        # ------------------------------------------
+
+        validation = WorkflowValidator().validate(
+            self.model_configuration
+        )
+
+        if not validation["valid"]:
+
+            error_message = (
+                "Workflow configuration validation failed:\n"
+                + "\n".join(
+                    f"- {error}"
+                    for error in validation["errors"]
+                )
+            )
+
+            self.failed.emit(error_message)
+
             return
+
+        # ------------------------------------------
+        # SEQUENCE VALIDATION
+        # ------------------------------------------
+
+        if not self.steps:
+
+            self.failed.emit(
+                "Sequence has no steps."
+            )
+
+            return
+
+        # ------------------------------------------
+        # RESET WORKFLOW STATE
+        # ------------------------------------------
 
         self.index = 0
         self.running = True
