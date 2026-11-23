@@ -3,7 +3,12 @@
         "kikusui_tos9302": {
             "catalog_id": "kikusui_tos9302",
             "enabled": true,
-            "overrides": {}
+            "overrides": {
+                "selected_functions": [
+                    "acw",
+                    "ecac"
+                ]
+            }
         }
     }
 }

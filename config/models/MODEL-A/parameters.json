@@ -36,8 +36,8 @@
         },
         "ac_volt_confirmation": {
             "power_supply": {
-                "voltage_range_V": 270.0,
-                "output_voltage_V": 230.0,
+                "voltage_range_V": 270,
+                "output_voltage_V": 230,
                 "frequency_Hz": 50.0
             },
             "evaluation_duration_s": 10.0,

@@ -1,0 +1,54 @@
+{
+    "name": "BACKUP TEST",
+    "sequence_id": "test_sequence",
+    "steps": [
+        {
+            "enabled": true,
+            "id": "step_001",
+            "name": "Validate Serial Number",
+            "parameters": {
+                "max_length": 50,
+                "min_length": 1,
+                "source": "serial_number"
+            },
+            "type": "validate_serial"
+        },
+        {
+            "enabled": true,
+            "id": "step_002",
+            "name": "Scan Door Top",
+            "parameters": {
+                "field": "door_top",
+                "label": "Door Top Barcode",
+                "placeholder": "Scan Door Top Barcode",
+                "required": true
+            },
+            "type": "input"
+        },
+        {
+            "enabled": true,
+            "id": "step_006",
+            "name": "serial_test",
+            "parameters": {
+                "field": "Serial Test",
+                "label": "Serial Test Barcode",
+                "placeholder": "Scan Serial Test Barcode",
+                "required": true
+            },
+            "type": "input"
+        },
+        {
+            "enabled": true,
+            "id": "step_003",
+            "name": "Scan Door Bottom",
+            "parameters": {
+                "field": "door_bottom",
+                "label": "Door Bottom Barcode",
+                "placeholder": "Scan Door Bottom Barcode",
+                "required": true
+            },
+            "type": "input"
+        }
+    ],
+    "version": 1
+}

@@ -11,5 +11,11 @@
 
     "application_mode": "SIMULATION",
     "default_model": "MODEL-A",
-    "allow_hardware_mode": false
+    "allow_hardware_mode": false,
+
+    "storage": {
+        "type": "sqlite",
+        "path": "data/safety_test.db",
+        "table": "test_results"
+    }
 }

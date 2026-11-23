@@ -204,29 +204,31 @@ class HistoryPage(QWidget):
 
         self.table = QTableWidget()
 
-        self.table.setColumnCount(8)
+        self.table.setColumnCount(10)
 
         self.table.setHorizontalHeaderLabels([
             "ID",
             "Timestamp",
             "Serial Number",
             "Model",
-            "Operator",
+            "Operator ID",
+            "Operator Name",
             "Judgment",
+            "Status",
             "Mode",
             "Sequence"
         ])
 
         self.table.setSelectionBehavior(
-            QTableWidget.SelectRows
+            QTableWidget.SelectionBehavior.SelectRows
         )
 
         self.table.setSelectionMode(
-            QTableWidget.SingleSelection
+            QTableWidget.SelectionMode.SingleSelection
         )
 
         self.table.setEditTriggers(
-            QTableWidget.NoEditTriggers
+            QTableWidget.EditTrigger.NoEditTriggers
         )
 
         self.table.setAlternatingRowColors(True)
@@ -236,12 +238,17 @@ class HistoryPage(QWidget):
         header = self.table.horizontalHeader()
 
         header.setSectionResizeMode(
-            QHeaderView.ResizeToContents
+            QHeaderView.ResizeMode.ResizeToContents
         )
 
         header.setSectionResizeMode(
             2,
-            QHeaderView.Stretch
+            QHeaderView.ResizeMode.Stretch
+        )
+
+        header.setSectionResizeMode(
+            6,
+            QHeaderView.ResizeMode.Stretch
         )
 
         root.addWidget(self.table, 1)
@@ -453,28 +460,16 @@ class HistoryPage(QWidget):
                 or "-"
             )
 
-            operator_name = (
-                result.get("operator_name")
-                or result.get("operator_id")
-                or "-"
-            )
-
             values = [
-
                 result.get("id"),
-
                 result.get("timestamp"),
-
                 result.get("serial_number"),
-
                 model_name,
-
-                operator_name,
-
+                result.get("execution_status"),
+                result.get("operator_id"),
+                result.get("operator_name"),
                 result.get("judgment"),
-
                 result.get("application_mode"),
-
                 result.get("sequence_id")
             ]
 
@@ -489,7 +484,7 @@ class HistoryPage(QWidget):
                 item = QTableWidgetItem(display_value)
 
                 item.setTextAlignment(
-                    Qt.AlignCenter
+                    Qt.AlignmentFlag.AlignCenter
                 )
 
                 self.table.setItem(
@@ -498,24 +493,35 @@ class HistoryPage(QWidget):
                     item
                 )
 
-            judgment_item = self.table.item(row, 5)
+            # Execution status color
+            status_item = self.table.item(row, 4)
+
+            if status_item:
+
+                status = status_item.text().upper()
+
+                if status == "COMPLETED":
+
+                    status_item.setForeground(Qt.darkGreen)
+
+                elif status in ("ERROR", "ABORTED"):
+
+                    status_item.setForeground(Qt.red)
+
+            # Judgment color
+            judgment_item = self.table.item(row, 7)
 
             if judgment_item:
 
-                if judgment_item.text().upper() == "PASS":
+                judgment = judgment_item.text().upper()
 
-                    judgment_item.setForeground(
-                        Qt.darkGreen
-                    )
+                if judgment == "PASS":
 
-                elif judgment_item.text().upper() in (
-                    "FAIL",
-                    "NG"
-                ):
+                    judgment_item.setForeground(Qt.darkGreen)
 
-                    judgment_item.setForeground(
-                        Qt.red
-                    )
+                elif judgment in ("FAIL", "NG"):
+
+                    judgment_item.setForeground(Qt.red)
 
         self.result_label.setText(
             f"{len(self.results)} records found "

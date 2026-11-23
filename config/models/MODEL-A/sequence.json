@@ -26,7 +26,7 @@
             "type": "input"
         },
         {
-            "enabled": true,
+            "enabled": false,
             "id": "step_006",
             "name": "serial_test",
             "parameters": {
@@ -38,7 +38,7 @@
             "type": "input"
         },
         {
-            "enabled": false,
+            "enabled": true,
             "id": "step_003",
             "name": "Scan Door Bottom",
             "parameters": {

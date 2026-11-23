@@ -36,6 +36,14 @@
                 "configure_item": ":NUMERIC:NORMAL:ITEM{item} {function},{element}",
                 "read_item": ":NUMERIC:NORMAL:VALUE? {item}"
             },
+            "initialization": [
+                {
+                    "name": "measurement_mode",
+                    "set_command": ":INPUT:MODE RMS",
+                    "query_command": ":INPUT:MODE?",
+                    "expected_response": "RMS"
+                }
+            ],
             "measurements": {
                 "voltage": {
                     "name": "Voltage",
@@ -72,7 +80,7 @@
                 "resource": "ASRL6::INSTR",
                 "timeout": 5000,
                 "backend": "",
-                "baud_rate": 19200,
+                "baud_rate": 19201,
                 "data_bits": 8,
                 "parity": "NONE",
                 "stop_bits": 1,

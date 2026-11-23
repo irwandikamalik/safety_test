@@ -21,6 +21,7 @@ class GenericSCPIInstrument(BaseInstrument):
         self.instrument = None
         self.connected = False
 
+
     def connect(self):
 
         if self.connected:
@@ -58,27 +59,39 @@ class GenericSCPIInstrument(BaseInstrument):
                 pyvisa.ResourceManager()
             )
 
-        self.instrument = (
-            self.resource_manager.open_resource(resource)
-        )
-
-        self.instrument.timeout = timeout
-
-        self.instrument.read_termination = (
-            self.connection_config.get(
-                "read_termination", "\n"
+        try:
+            self.instrument = (
+                self.resource_manager.open_resource(resource)
             )
-        )
 
-        self.instrument.write_termination = (
-            self.connection_config.get(
-                "write_termination", "\n"
+            self.instrument.timeout = timeout
+
+            self.instrument.read_termination = (
+                self.connection_config.get(
+                    "read_termination", "\n"
+                )
             )
-        )
 
-        self.connected = True
+            self.instrument.write_termination = (
+                self.connection_config.get(
+                    "write_termination", "\n"
+                )
+            )
 
-        return True
+            self.connected = True
+
+            # Apply instrument startup configuration.
+            self._apply_initialization()
+
+            return True
+
+        except Exception:
+            try:
+                self.disconnect()
+            except Exception:
+                pass
+
+            raise
 
     def disconnect(self):
 
@@ -94,6 +107,73 @@ class GenericSCPIInstrument(BaseInstrument):
                 self.resource_manager.close()
 
             self.resource_manager = None
+
+
+    def _apply_initialization(self):
+
+        self._require_connection()
+
+        initialization = self.configuration.get(
+            "initialization", []
+        )
+
+        if not isinstance(initialization, list):
+            raise ValueError(
+                "Instrument initialization must be a list."
+            )
+
+        for item in initialization:
+
+            if not isinstance(item, dict):
+                raise ValueError(
+                    "Invalid instrument initialization entry."
+                )
+
+            name = item.get("name", "unnamed")
+
+            set_command = item.get("set_command")
+            query_command = item.get("query_command")
+            expected_response = item.get(
+                "expected_response"
+            )
+
+            if not set_command or not query_command:
+                raise ValueError(
+                    f"Incomplete initialization configuration: {name}"
+                )
+
+            if not expected_response:
+                raise ValueError(
+                    f"Missing expected response: {name}"
+                )
+
+            print(
+                f"INSTRUMENT INITIALIZATION: {name}"
+            )
+
+            self.instrument.write(set_command)
+
+            actual_response = (
+                self.instrument.query(query_command).strip()
+            )
+
+            actual_value = actual_response.split()[-1].upper()
+            expected_value = str(
+                expected_response
+            ).strip().upper()
+
+            if actual_value != expected_value:
+                raise RuntimeError(
+                    f"Instrument initialization failed: {name}. "
+                    f"Expected={expected_value}, "
+                    f"Actual={actual_response}"
+                )
+
+            print(
+                f"INITIALIZATION VERIFIED: "
+                f"{name} = {actual_value}"
+            )
+
 
     def identify(self):
 

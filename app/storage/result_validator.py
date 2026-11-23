@@ -1,5 +1,6 @@
 
 import json
+import math
 
 from copy import deepcopy
 
@@ -32,6 +33,33 @@ class ResultValidator:
         "ABORTED",
     }
 
+    @staticmethod
+    def find_non_finite_values(data, path="result"):
+        findings = []
+
+        if isinstance(data, dict):
+            for key, value in data.items():
+                findings.extend(
+                    ResultValidator.find_non_finite_values(
+                        value,
+                        f"{path}.{key}"
+                    )
+                )
+
+        elif isinstance(data, (list, tuple)):
+            for index, value in enumerate(data):
+                findings.extend(
+                    ResultValidator.find_non_finite_values(
+                        value,
+                        f"{path}[{index}]"
+                    )
+                )
+
+        elif isinstance(data, float) and not math.isfinite(data):
+            findings.append(f"{path} = {data}")
+
+        return findings
+
     @classmethod
     def validate(cls, result_record):
 
@@ -50,7 +78,6 @@ class ResultValidator:
         )
 
         for section_name in required_sections:
-
             section = record.get(section_name)
 
             if not isinstance(section, dict):
@@ -61,12 +88,8 @@ class ResultValidator:
         system = record["system"]
         result = record["result"]
 
-        # ------------------------------------------
         # REQUIRED SYSTEM FIELDS
-        # ------------------------------------------
-
         for field_name in cls.REQUIRED_SYSTEM_FIELDS:
-
             value = system.get(field_name)
 
             if value is None or str(value).strip() == "":
@@ -74,14 +97,9 @@ class ResultValidator:
                     f"Required system field is missing: {field_name}"
                 )
 
-        system["test_id"] = str(
-            system["test_id"]
-        ).strip()
+        system["test_id"] = str(system["test_id"]).strip()
 
-        # ------------------------------------------
         # APPLICATION MODE
-        # ------------------------------------------
-
         application_mode = str(
             system["application_mode"]
         ).upper()
@@ -93,10 +111,7 @@ class ResultValidator:
 
         system["application_mode"] = application_mode
 
-        # ------------------------------------------
         # EXECUTION STATUS
-        # ------------------------------------------
-
         execution_status = str(
             system.get("execution_status", "COMPLETED")
         ).strip().upper()
@@ -108,10 +123,7 @@ class ResultValidator:
 
         system["execution_status"] = execution_status
 
-        # ------------------------------------------
         # JUDGMENT
-        # ------------------------------------------
-
         judgment = result.get("judgment")
 
         if judgment is not None:
@@ -127,18 +139,9 @@ class ResultValidator:
                 "Completed result must have a judgment."
             )
 
-        if execution_status in ("ERROR", "ABORTED"):
-            if judgment is not None and judgment not in cls.VALID_JUDGMENTS:
-                raise ValueError(
-                    f"Invalid judgment: {judgment}"
-                )
-
         result["judgment"] = judgment
 
-        # ------------------------------------------
         # OPTIONAL STRUCTURED SECTIONS
-        # ------------------------------------------
-
         optional_sections = (
             "measurements",
             "test_judgments",
@@ -146,20 +149,28 @@ class ResultValidator:
         )
 
         for section_name in optional_sections:
-
             if section_name in record:
-
                 if not isinstance(record[section_name], dict):
                     raise ValueError(
                         f"Section '{section_name}' must be a dictionary."
                     )
 
-        # ------------------------------------------
+
+        # NUMERIC VALIDATION
+        findings = cls.find_non_finite_values(record)
+
+        if findings:
+            details = "\n".join(
+                f"- {item}" for item in findings
+            )
+
+            raise ValueError(
+                "Result contains non-finite numeric values:\n"
+                f"{details}"
+            )
+
         # JSON COMPATIBILITY
-        # ------------------------------------------
-
         try:
-
             json.dumps(
                 record,
                 ensure_ascii=False,
@@ -167,7 +178,6 @@ class ResultValidator:
             )
 
         except (TypeError, ValueError) as error:
-
             raise ValueError(
                 f"Result record contains unsupported data: {error}"
             ) from error

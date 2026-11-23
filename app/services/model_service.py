@@ -8,6 +8,7 @@ import re
 from pathlib import Path
 
 from app.core.workflow_validator import WorkflowValidator
+from app.utils.app_paths import AppPaths
 
 
 class ModelService:
@@ -31,7 +32,7 @@ class ModelService:
 
     def __init__(self):
 
-        self.project_root = Path(__file__).resolve().parents[2]
+        self.project_root = AppPaths.application_root()
 
         self.config_root = (
             self.project_root / "config"

@@ -1,0 +1,49 @@
+{
+    "model_id": "MODEL-C",
+    "configuration_status": "DRAFT",
+    "hardware_approved": false,
+    "test_parameters": {
+        "acw": {
+            "test_voltage_V": 1400.0,
+            "limit_voltage_V": 5500.0,
+            "frequency_Hz": 50.0,
+            "upper": 18.0,
+            "test_time_s": 3.0,
+            "rise_time_s": 1.0,
+            "fall_time_s": 1.0,
+            "lower": 0.0
+        },
+        "ecac": {
+            "judge_type": "resistance",
+            "test_current_A": 25.0,
+            "limit_current_A": 42.0,
+            "frequency_Hz": 60.0,
+            "upper": 0.2,
+            "test_time_s": 5.0,
+            "rise_time_s": 1.0,
+            "fall_time_s": 1.0,
+            "lower": 0.0
+        },
+        "ecdc": {
+            "judge_type": "resistance",
+            "test_current_A": 25.0,
+            "limit_current_A": 42.0,
+            "upper": 0.2,
+            "lower": 0.0,
+            "test_time_s": 5.0,
+            "rise_time_s": 1.0,
+            "fall_time_s": 1.0
+        },
+        "ac_volt_confirmation": {
+            "power_supply": {
+                "voltage_range_V": 270,
+                "output_voltage_V": 230,
+                "frequency_Hz": 50.0
+            },
+            "evaluation_duration_s": 10.0,
+            "sample_interval_s": 1.0,
+            "lower": 220.0,
+            "upper": 240.0
+        }
+    }
+}

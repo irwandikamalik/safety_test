@@ -1,6 +1,7 @@
 
 import threading
 import time
+import math
 
 from PySide6.QtCore import QThread, Signal
 
@@ -462,32 +463,50 @@ class ACVoltConfirmationWorker(QThread):
     # WT310E MEASUREMENT
     # ==================================================
 
-    def _read_power_meter(self):
+    def _read_power_meter(self, timeout=5.0, retry_interval=0.2):
+        start_time = time.monotonic()
+        last_value = None
+        last_raw = None
 
-        result = self.instrument_manager.read_measurements(
-            self.power_meter_id,
-            self.measurement_ids
-        )
+        while time.monotonic() - start_time < timeout:
 
-        measurements = result.get(
-            "measurements", {}
-        )
+            if self.isInterruptionRequested():
+                raise RuntimeError(
+                    "AC Volt Confirmation interrupted while waiting "
+                    "for valid WT310E measurement."
+                )
 
-        voltage_data = measurements.get(
-            "voltage"
-        )
-
-        if voltage_data is None:
-            raise RuntimeError(
-                "WT310E voltage measurement is unavailable."
+            result = self.instrument_manager.read_measurements(
+                self.power_meter_id,
+                self.measurement_ids
             )
 
-        voltage = float(
-            voltage_data["value"]
+            measurements = result.get("measurements", {})
+            voltage_data = measurements.get("voltage")
+
+            if voltage_data is None:
+                raise RuntimeError(
+                    "WT310E voltage measurement is unavailable."
+                )
+
+            last_value = voltage_data.get("value")
+            last_raw = voltage_data.get("raw")
+
+            try:
+                voltage = float(last_value)
+            except (TypeError, ValueError):
+                voltage = float("nan")
+
+            if math.isfinite(voltage):
+                return result, voltage
+
+            self.msleep(int(retry_interval * 1000))
+
+        raise RuntimeError(
+            "WT310E measurement timeout: "
+            f"no valid voltage after {timeout:.1f} seconds. "
+            f"Last value={last_value!r}, raw={last_raw!r}"
         )
-
-        return result, voltage
-
 
     def _run_evaluation(self):
 
