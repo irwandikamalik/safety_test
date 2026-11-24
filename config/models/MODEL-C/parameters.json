@@ -1,7 +1,7 @@
 {
     "model_id": "MODEL-C",
-    "configuration_status": "DRAFT",
-    "hardware_approved": false,
+    "configuration_status": "APPROVED",
+    "hardware_approved": true,
     "test_parameters": {
         "acw": {
             "test_voltage_V": 1400.0,

@@ -9,9 +9,9 @@
         "- false: Hardware operation is disabled."
     ],
 
-    "application_mode": "SIMULATION",
+    "application_mode": "HARDWARE",
     "default_model": "MODEL-A",
-    "allow_hardware_mode": false,
+    "allow_hardware_mode": true,
 
     "storage": {
         "type": "sqlite",

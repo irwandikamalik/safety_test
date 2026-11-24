@@ -264,13 +264,6 @@ class MeasurementDialog(QDialog):
 
         result = result or {}
 
-        print("\n========== MEASUREMENT DIALOG DEBUG ==========")
-        print("RESULT:", result)
-        print("FUNCTION:", result.get("function"))
-        print("JUDGMENT:", result.get("judgment"))
-        print("MEASURED CURRENT:", result.get("measured_current_mA"))
-        print("==============================================\n")
-
         function = result.get("function")
 
         test_titles = {
@@ -458,178 +451,6 @@ class MeasurementDialog(QDialog):
         layout.addWidget(button)
 
 
-class LiveMeasurementDialog(QDialog):
-
-    cancel_requested = Signal()
-
-    def __init__(
-        self,
-        instrument,
-        duration_s,
-        sample_interval_s,
-        parent=None
-    ):
-
-        super().__init__(parent)
-
-        self.instrument = instrument
-        self.duration_s = float(duration_s)
-        self.sample_interval_s = float(sample_interval_s)
-
-        self.is_running = True
-        self.value_labels = {}
-
-        self.measurement_display = {
-            "voltage": ("Voltage", "V"),
-            "current": ("Current", "A"),
-            "active_power": ("Active Power", "W"),
-            "voltage_frequency": ("Voltage Frequency", "Hz")
-        }
-
-        self.setWindowTitle("Live Measurement")
-        self.setMinimumSize(680, 500)
-        self.resize(720, 560)
-        self.setModal(True)
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 22, 24, 22)
-        layout.setSpacing(14)
-
-        # ======================================
-        # HEADER
-        # ======================================
-
-        title = QLabel("WT310E Live Measurement")
-        title.setObjectName("PageTitle")
-        layout.addWidget(title)
-
-        self.instrument_label = QLabel(
-            f"Instrument: {instrument}"
-        )
-        self.instrument_label.setStyleSheet(
-            "font-size: 10pt; color: #94A3B8;"
-        )
-        layout.addWidget(self.instrument_label)
-
-        # ======================================
-        # STATUS
-        # ======================================
-
-        status_layout = QHBoxLayout()
-        status_layout.setSpacing(8)
-
-        self.source_indicator = QLabel("●")
-        self.source_indicator.setStyleSheet("""
-            font-size: 15pt;
-            color: #94A3B8;
-        """)
-
-        self.source_status_label = QLabel(
-            "SOURCE: CONNECTING..."
-        )
-
-        self.source_status_label.setStyleSheet("""
-            font-size: 9pt;
-            font-weight: bold;
-            color: #D69E36;
-        """)
-
-        self.status_label = QLabel("CONNECTING...")
-        self.status_label.setStyleSheet("""
-            font-size: 9pt;
-            font-weight: bold;
-            color: #D69E36;
-        """)
-
-        status_layout.addWidget(self.source_indicator)
-        status_layout.addWidget(self.source_status_label)
-        status_layout.addStretch()
-        status_layout.addWidget(self.status_label)
-
-        layout.addLayout(status_layout)
-
-        # ======================================
-        # MEASUREMENT INFORMATION
-        # ======================================
-
-        info_layout = QHBoxLayout()
-
-        self.time_label = QLabel(
-            f"Elapsed: 0.0 / {self.duration_s:.1f} s"
-        )
-
-        self.sample_label = QLabel("Samples: 0")
-
-        info_layout.addWidget(self.time_label)
-        info_layout.addStretch()
-        info_layout.addWidget(self.sample_label)
-
-        layout.addLayout(info_layout)
-
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setRange(0, 100)
-        self.progress_bar.setValue(0)
-        self.progress_bar.setTextVisible(True)
-        self.progress_bar.setFixedHeight(18)
-
-        layout.addWidget(self.progress_bar)
-
-        # ======================================
-        # MEASUREMENT PANEL
-        # ======================================
-
-        section_title = QLabel("MEASUREMENT RESULTS")
-        section_title.setStyleSheet("""
-            font-size: 9pt;
-            font-weight: bold;
-            letter-spacing: 1px;
-            color: #94A3B8;
-            padding-top: 5px;
-        """)
-
-        layout.addWidget(section_title)
-
-        self.measurement_container = QFrame()
-        self.measurement_container.setObjectName(
-            "MeasurementPanel"
-        )
-
-        self.measurement_container.setStyleSheet("""
-            QFrame#MeasurementPanel {
-                background-color: #1E293B;
-                border: 1px solid #334155;
-                border-radius: 10px;
-            }
-        """)
-
-        self.measurement_layout = QVBoxLayout(
-            self.measurement_container
-        )
-
-        self.measurement_layout.setContentsMargins(
-            14, 12, 14, 12
-        )
-
-        self.measurement_layout.setSpacing(8)
-
-        layout.addWidget(self.measurement_container, 1)
-
-        # ======================================
-        # BUTTON
-        # ======================================
-
-        self.cancel_button = QPushButton(
-            "Cancel Measurement (ESC)"
-        )
-
-        self.cancel_button.setObjectName("DangerButton")
-        self.cancel_button.setMinimumHeight(42)
-
-        self.cancel_button.clicked.connect(
-            self.cancel_measurement
-        )
-
-        layout.addWidget(self.cancel_button)
 
     # ==========================================
     # CREATE MEASUREMENT ROW
@@ -695,42 +516,6 @@ class LiveMeasurementDialog(QDialog):
         self.measurement_layout.addWidget(row)
 
         self.value_labels[measurement_id] = value
-
-    def update_source_status(self, simulation):
-
-        if simulation:
-
-            self.source_indicator.setStyleSheet("""
-                font-size: 15pt;
-                color: #94A3B8;
-            """)
-
-            self.source_status_label.setText(
-                "NOT LIVE (SIMULATION)"
-            )
-
-            self.source_status_label.setStyleSheet("""
-                font-size: 10pt;
-                font-weight: bold;
-                color: #94A3B8;
-                padding: 5px 0px;
-            """)
-
-        else:
-
-            self.source_indicator.setStyleSheet("""
-                font-size: 15pt;
-                color: #EF4444;
-            """)
-
-            self.source_status_label.setText("LIVE")
-
-            self.source_status_label.setStyleSheet("""
-                font-size: 10pt;
-                font-weight: bold;
-                color: #EF4444;
-                padding: 5px 0px;
-            """)
             
     # ==========================================
     # UPDATE LIVE MEASUREMENT
@@ -925,6 +710,8 @@ class ACVoltConfirmationDialog(QDialog):
             evaluation_duration_s
         )
 
+        self.output_is_running = False
+
         self.sample_interval_s = float(
             sample_interval_s
         )
@@ -1014,17 +801,6 @@ class ACVoltConfirmationDialog(QDialog):
         # MEASUREMENT PANEL
         # ======================================
 
-        section_title = QLabel("LIVE MEASUREMENTS")
-
-        section_title.setStyleSheet("""
-            font-size: 9pt;
-            font-weight: bold;
-            letter-spacing: 1px;
-            color: #94A3B8;
-        """)
-
-        layout.addWidget(section_title)
-
         self.measurement_container = QFrame()
         self.measurement_container.setObjectName(
             "ACMeasurementPanel"
@@ -1067,39 +843,22 @@ class ACVoltConfirmationDialog(QDialog):
             "DangerButton"
         )
 
-        self.enable_button = QPushButton(
-            "Enable AC Output"
-        )
-
-        self.enable_button.setObjectName(
-            "SuccessButton"
-        )
-
-        self.enable_button.setEnabled(False)
-
         self.ok_button = QPushButton("OK")
 
         self.ok_button.setObjectName(
             "PrimaryButton"
         )
 
-        self.ok_button.setEnabled(False)
-
         self.cancel_button.clicked.connect(
             self.cancel_confirmation
         )
 
-        self.enable_button.clicked.connect(
-            self.request_output_enable
-        )
-
         self.ok_button.clicked.connect(
-            self.request_pass_confirmation
+            self.request_output_action
         )
 
         button_layout.addWidget(self.cancel_button)
         button_layout.addStretch()
-        button_layout.addWidget(self.enable_button)
         button_layout.addWidget(self.ok_button)
 
         layout.addLayout(button_layout)
@@ -1170,22 +929,41 @@ class ACVoltConfirmationDialog(QDialog):
             "PCR500M CONFIGURATION VERIFIED"
         )
 
-        self.enable_button.setEnabled(True)
+        self.ok_button.setText("ENABLE OUTPUT")
+        self.ok_button.setEnabled(True)
 
-    # ==========================================
-    # OUTPUT APPROVAL
-    # ==========================================
+    def request_output_action(self):
 
-    def request_output_enable(self):
+        # ==========================================
+        # BEFORE EVALUATION PASS
+        # ==========================================
 
-        self.enable_button.setEnabled(False)
+        if not self.is_passed:
 
-        self.status_label.setText(
-            "ACTIVATING PCR500M OUTPUT..."
-        )
+            self.ok_button.setEnabled(False)
 
-        self.enable_output_requested.emit()
+            self.status_label.setText(
+                "ACTIVATING PCR500M OUTPUT..."
+            )
 
+            self.enable_output_requested.emit()
+
+        # ==========================================
+        # AFTER EVALUATION PASS
+        # ==========================================
+
+        else:
+
+            self.ok_button.setEnabled(False)
+
+            self.status_label.setText(
+                "OPERATOR CONFIRMED PASS. "
+                "SHUTTING DOWN INSTRUMENTS..."
+            )
+
+            self.pass_confirmation_requested.emit()
+            self.accept()
+            
     # ==========================================
     # LIVE MEASUREMENT
     # ==========================================
@@ -1245,7 +1023,7 @@ class ACVoltConfirmationDialog(QDialog):
             self.value_labels[measurement_id].setText(
                 f"{display_value} {unit}"
             )
-
+ 
 
     # ==========================================
     # EVALUATION PASS
@@ -1254,6 +1032,9 @@ class ACVoltConfirmationDialog(QDialog):
     def show_pass(self, result):
 
         self.is_passed = True
+
+        # Evaluasi PASS berarti output masih ON.
+        self.output_is_running = True
 
         self.progress_bar.setValue(100)
 
@@ -1273,9 +1054,8 @@ class ACVoltConfirmationDialog(QDialog):
             f"{result.get('elapsed_s', 0):.2f} s"
         )
 
-        self.enable_button.setEnabled(False)
+        self.ok_button.setText("CONFIRM PASS")
         self.ok_button.setEnabled(True)
-
         self.ok_button.setFocus()
 
     # ==========================================
@@ -1328,7 +1108,6 @@ class ACVoltConfirmationDialog(QDialog):
             self.accept
         )
 
-        self.enable_button.setEnabled(False)
         self.ok_button.setEnabled(False)
 
         self.cancel_button.setEnabled(True)
@@ -1355,7 +1134,6 @@ class ACVoltConfirmationDialog(QDialog):
         self.time_label.setText(message)
         self.time_label.setWordWrap(True)
 
-        self.enable_button.setEnabled(False)
         self.ok_button.setEnabled(False)
 
         self.cancel_button.setText("Close")
@@ -1367,24 +1145,6 @@ class ACVoltConfirmationDialog(QDialog):
             self.accept
         )
 
-    # ==========================================
-    # PASS CONFIRMATION
-    # ==========================================
-
-    def request_pass_confirmation(self):
-
-        if not self.is_passed:
-            return
-
-        self.ok_button.setEnabled(False)
-        self.cancel_button.setEnabled(False)
-
-        self.status_label.setText(
-            "OPERATOR CONFIRMED PASS. "
-            "SHUTTING DOWN INSTRUMENTS..."
-        )
-
-        self.pass_confirmation_requested.emit()
 
     # ==========================================
     # CANCEL
@@ -1401,7 +1161,6 @@ class ACVoltConfirmationDialog(QDialog):
             self.cancel_requested_once = True
 
             self.cancel_button.setEnabled(False)
-            self.enable_button.setEnabled(False)
             self.ok_button.setEnabled(False)
 
             self.status_label.setText(

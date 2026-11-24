@@ -4,6 +4,7 @@ import time
 import math
 
 from PySide6.QtCore import QThread, Signal
+from copy import deepcopy
 
 
 class ACVoltConfirmationWorker(QThread):
@@ -16,7 +17,8 @@ class ACVoltConfirmationWorker(QThread):
         dict,
         int,
         float,
-        bool
+        bool,
+        str
     )
 
     evaluation_passed = Signal(dict)
@@ -66,10 +68,13 @@ class ACVoltConfirmationWorker(QThread):
             voltage_max_V
         )
 
-        self.measurement_ids = (
-            measurement_ids or ["voltage", "current"]
-        )
-
+        self.measurement_ids = [
+            "voltage",
+            "current",
+            "voltage_frequency",
+            "active_power"
+        ]
+        
         self.approval_event = threading.Event()
         self.pass_confirmation_event = threading.Event()
         self.stop_event = threading.Event()
@@ -464,16 +469,17 @@ class ACVoltConfirmationWorker(QThread):
     # ==================================================
 
     def _read_power_meter(self, timeout=5.0, retry_interval=0.2):
+
         start_time = time.monotonic()
-        last_value = None
-        last_raw = None
+
+        last_invalid = {}
 
         while time.monotonic() - start_time < timeout:
 
-            if self.isInterruptionRequested():
+            if self._is_stopping() or self.isInterruptionRequested():
                 raise RuntimeError(
                     "AC Volt Confirmation interrupted while waiting "
-                    "for valid WT310E measurement."
+                    "for valid WT310E measurements."
                 )
 
             result = self.instrument_manager.read_measurements(
@@ -481,39 +487,78 @@ class ACVoltConfirmationWorker(QThread):
                 self.measurement_ids
             )
 
-            measurements = result.get("measurements", {})
-            voltage_data = measurements.get("voltage")
+            measurements = (
+                result.get("measurements", {})
+                if isinstance(result, dict)
+                else {}
+            )
 
-            if voltage_data is None:
-                raise RuntimeError(
-                    "WT310E voltage measurement is unavailable."
+            invalid_measurements = {}
+
+            # Validate every requested measurement.
+            for measurement_id in self.measurement_ids:
+
+                measurement = measurements.get(measurement_id)
+
+                if not isinstance(measurement, dict):
+
+                    invalid_measurements[measurement_id] = (
+                        "Measurement unavailable"
+                    )
+
+                    continue
+
+                raw_value = measurement.get("value")
+
+                try:
+                    numeric_value = float(raw_value)
+
+                except (TypeError, ValueError):
+
+                    invalid_measurements[measurement_id] = (
+                        f"Invalid value: {raw_value!r}"
+                    )
+
+                    continue
+
+                if not math.isfinite(numeric_value):
+
+                    invalid_measurements[measurement_id] = (
+                        f"Non-finite value: {raw_value!r}, "
+                        f"raw={measurement.get('raw')!r}"
+                    )
+
+            # Accept the sample only when every measurement is valid.
+            if not invalid_measurements:
+
+                voltage = float(
+                    measurements["voltage"]["value"]
                 )
 
-            last_value = voltage_data.get("value")
-            last_raw = voltage_data.get("raw")
-
-            try:
-                voltage = float(last_value)
-            except (TypeError, ValueError):
-                voltage = float("nan")
-
-            if math.isfinite(voltage):
                 return result, voltage
 
-            self.msleep(int(retry_interval * 1000))
+            last_invalid = invalid_measurements
+
+            # Wait before retrying. Also allow cancellation.
+            if self.stop_event.wait(retry_interval):
+                raise RuntimeError(
+                    "AC Volt Confirmation was cancelled while waiting "
+                    "for valid WT310E measurements."
+                )
 
         raise RuntimeError(
             "WT310E measurement timeout: "
-            f"no valid voltage after {timeout:.1f} seconds. "
-            f"Last value={last_value!r}, raw={last_raw!r}"
+            f"not all measurements became valid after {timeout:.1f} seconds. "
+            f"Invalid measurements: {last_invalid}"
         )
+
 
     def _run_evaluation(self):
 
         start_time = time.monotonic()
 
         sample_number = 0
-        readings = []
+        evaluation_samples = []
 
         while True:
 
@@ -529,14 +574,33 @@ class ACVoltConfirmationWorker(QThread):
 
             result, voltage = self._read_power_meter()
 
+            elapsed = time.monotonic() - start_time
+
             sample_number += 1
-            readings.append(voltage)
+
+            measurements = deepcopy(
+                result.get("measurements", {})
+            )
+
+            simulation = bool(
+                result.get("simulation", False)
+            )
+
+            sample_record = {
+                "sample_number": sample_number,
+                "elapsed_s": elapsed,
+                "measurements": measurements,
+                "simulation": simulation
+            }
+
+            evaluation_samples.append(sample_record)
 
             self.sample_received.emit(
                 result,
                 sample_number,
                 elapsed,
-                bool(result.get("simulation", False))
+                simulation,
+                "evaluation"
             )
 
             remaining = (
@@ -546,23 +610,43 @@ class ACVoltConfirmationWorker(QThread):
 
             if remaining > 0:
 
-                self.stop_event.wait(
-                    min(
-                        self.sample_interval_s,
-                        remaining
+                if self.stop_event.wait(
+                    min(self.sample_interval_s, remaining)
+                ):
+                    raise RuntimeError(
+                        "AC Volt Confirmation was cancelled."
                     )
-                )
 
-        if not readings:
+        if not evaluation_samples:
             raise RuntimeError(
                 "No WT310E measurement was collected."
             )
 
         # ==============================================
-        # FINAL JUDGMENT AFTER EVALUATION
+        # FINAL SAMPLE
         # ==============================================
 
-        final_voltage = readings[-1]
+        final_sample = deepcopy(
+            evaluation_samples[-1]
+        )
+
+        final_measurements = final_sample["measurements"]
+
+        voltage_data = final_measurements.get("voltage")
+
+        if not isinstance(voltage_data, dict):
+            raise RuntimeError(
+                "Final WT310E voltage measurement is unavailable."
+            )
+
+        final_voltage = float(
+            voltage_data.get("value")
+        )
+
+        if not math.isfinite(final_voltage):
+            raise RuntimeError(
+                "Final WT310E voltage is not finite."
+            )
 
         passed = (
             self.voltage_min_V
@@ -575,24 +659,52 @@ class ACVoltConfirmationWorker(QThread):
         return {
             "test": "ac_volt_confirmation",
             "judgment": judgment,
+
+            # Final reading used for judgment.
             "measured_voltage_V": final_voltage,
+            "final_sample": final_sample,
+
+            # Complete 10-second evaluation history.
+            "evaluation_samples": evaluation_samples,
+
+            # Statistical information.
             "average_voltage_V": (
-                sum(readings) / len(readings)
+                sum(
+                    float(
+                        sample["measurements"]["voltage"]["value"]
+                    )
+                    for sample in evaluation_samples
+                ) / len(evaluation_samples)
             ),
-            "minimum_voltage_V": min(readings),
-            "maximum_voltage_V": max(readings),
+
+            "minimum_voltage_V": min(
+                float(
+                    sample["measurements"]["voltage"]["value"]
+                )
+                for sample in evaluation_samples
+            ),
+
+            "maximum_voltage_V": max(
+                float(
+                    sample["measurements"]["voltage"]["value"]
+                )
+                for sample in evaluation_samples
+            ),
+
             "voltage_min_V": self.voltage_min_V,
             "voltage_max_V": self.voltage_max_V,
-            "sample_count": len(readings),
+
+            "sample_count": len(evaluation_samples),
+
             "elapsed_s": (
                 time.monotonic() - start_time
             ),
+
             "simulation": (
                 self.instrument_manager.application_mode
                 == "SIMULATION"
             )
         }
-
 
     # ==================================================
     # PASS LIVE MONITORING
@@ -603,9 +715,7 @@ class ACVoltConfirmationWorker(QThread):
         evaluation_result
     ):
 
-        sample_number = evaluation_result[
-            "sample_count"
-        ]
+        sample_number = evaluation_result["sample_count"]
 
         start_time = time.monotonic()
 
@@ -614,9 +724,7 @@ class ACVoltConfirmationWorker(QThread):
             if self.pass_confirmation_event.is_set():
                 return
 
-            result, voltage = (
-                self._read_power_meter()
-            )
+            result, _ = self._read_power_meter()
 
             sample_number += 1
 
@@ -629,7 +737,8 @@ class ACVoltConfirmationWorker(QThread):
                 result,
                 sample_number,
                 elapsed,
-                bool(result.get("simulation", False))
+                bool(result.get("simulation", False)),
+                "post_pass_monitoring"
             )
 
             if self.pass_confirmation_event.wait(

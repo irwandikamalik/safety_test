@@ -37,7 +37,13 @@ class WorkflowEngine(QObject):
 
     ac_volt_status_changed = Signal(str)
     ac_volt_configuration_ready = Signal(dict)
-    ac_volt_sample_received = Signal(dict, int, float, bool)
+    ac_volt_sample_received = Signal(
+        dict,
+        int,
+        float,
+        bool,
+        str
+    )
     ac_volt_evaluation_passed = Signal(dict)
     ac_volt_completed = Signal(dict)
     ac_volt_failed = Signal(str)
@@ -1040,6 +1046,7 @@ class WorkflowEngine(QObject):
         self.finish_current_step(outcome)
 
 
+
     def submit_interaction(self, response):
 
         if not self.running or not self.waiting:
@@ -1057,6 +1064,19 @@ class WorkflowEngine(QObject):
             if not outcome.success:
                 self.fail(outcome.message)
                 return
+
+            # ======================================
+            # SUPPORT MULTI-STAGE INTERACTION
+            # ======================================
+
+            if outcome.interaction:
+
+                self.process_outcome(outcome)
+                return
+
+            # ======================================
+            # STOP AFTER NG RESULT IS ACKNOWLEDGED
+            # ======================================
 
             if self.stop_after_interaction:
 

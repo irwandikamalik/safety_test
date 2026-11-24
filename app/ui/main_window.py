@@ -87,7 +87,7 @@ class MainWindow(QMainWindow):
         side_layout.addWidget(caption)
 
         self.create_nav_button(
-            "Test Execution", 0, side_layout, "test-execution.svg"
+            "Safety Test", 0, side_layout, "test-execution.svg"
         )
 
         self.create_nav_button(

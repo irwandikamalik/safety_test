@@ -38,7 +38,7 @@
             "type": "input"
         },
         {
-            "enabled": true,
+            "enabled": false,
             "id": "step_003",
             "name": "Scan Door Bottom",
             "parameters": {

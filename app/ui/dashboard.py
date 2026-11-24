@@ -1,8 +1,9 @@
 
 from datetime import datetime
+import math
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QShortcut, QKeySequence
+from PySide6.QtGui import QShortcut, QKeySequence, QColor
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -29,7 +30,6 @@ from app.ui.dialogs import (
     InputDialog,
     ApprovalDialog,
     MeasurementDialog,
-    LiveMeasurementDialog,
     ACVoltConfirmationDialog
 )
 
@@ -71,12 +71,12 @@ class DashboardPage(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(22, 18, 22, 18)
 
-        title = QLabel("Test Execution")
+        title = QLabel("Safety Test")
         title.setObjectName("PageTitle")
         root.addWidget(title)
 
         subtitle = QLabel(
-            "Execute and monitor JSON-based test workflows."
+            "Test following the prescribed procedure."
         )
         subtitle.setObjectName("Muted")
         root.addWidget(subtitle)
@@ -596,9 +596,101 @@ class DashboardPage(QWidget):
                 Qt.AlignmentFlag.AlignCenter
             )
 
-        self.sequence_table.setItem(
-            row, column, item
+        if column == 6:
+
+            judgment_colors = {
+                "OK": QColor("#7BC78D"),       # Hijau
+                # "SKIPPED": QColor("#808080"),  # Abu-abu
+                "RUNNING": QColor("#FFDA6D"),  # Kuning
+                "NG": QColor("#FF243A"),       # Merah
+                "WAITING": QColor("#FFFFFF"),  # Putih
+            }
+
+            color = judgment_colors.get(
+                str(value).strip().upper()
+            )
+
+            if color is not None:
+                item.setBackground(color)
+
+                # Warna teks agar kontras
+                text_color = (
+                    QColor("#263449")
+                    if str(value).strip().upper() in ("RUNNING", "WAITING")
+                    else QColor("#FFFFFF")
+                )
+
+                item.setForeground(text_color)
+
+        self.sequence_table.setItem(row, column, item)
+
+    def on_ac_volt_sample_received(
+        self,
+        result,
+        sample_number,
+        elapsed_s,
+        simulation,
+        phase
+    ):
+
+        row = self.current_step_row
+
+        if row is None:
+            return
+
+        if not (0 <= row < self.sequence_table.rowCount()):
+            return
+
+        measurements = result.get("measurements", {})
+
+        measurement_order = [
+            ("voltage", "Voltage", "V"),
+            ("current", "Current", "A"),
+            ("voltage_frequency", "Frequency", "Hz"),
+            ("active_power", "Active Power", "W")
+        ]
+
+        display_lines = []
+
+        for measurement_id, label, unit in measurement_order:
+
+            measurement = measurements.get(measurement_id)
+
+            if not isinstance(measurement, dict):
+                continue
+
+            value = measurement.get("value")
+
+            if value is None:
+                continue
+
+            try:
+                numeric_value = float(value)
+
+                if not math.isfinite(numeric_value):
+                    display_value = str(value)
+                else:
+                    display_value = f"{numeric_value:.3f}"
+
+            except (TypeError, ValueError):
+                display_value = str(value)
+
+            display_lines.append(
+                f"{label}: {display_value} {unit}"
+            )
+
+        if not display_lines:
+            return
+
+        measurement_text = "\n".join(display_lines)
+
+        self.set_table_item(
+            row,
+            5,
+            measurement_text
         )
+
+        self.sequence_table.resizeRowToContents(row)
 
     def load_sequence_table(self, steps):
 
@@ -767,6 +859,10 @@ class DashboardPage(QWidget):
                 }
             )
 
+            self.engine.ac_volt_sample_received.connect(
+                self.on_ac_volt_sample_received
+            )
+
             self.engine.log_message.connect(
                 self.add_log
             )
@@ -811,6 +907,7 @@ class DashboardPage(QWidget):
                 str(error)
             )
 
+
     def on_step_started(self, current, total, name):
 
         self.progress.setMaximum(total)
@@ -820,12 +917,35 @@ class DashboardPage(QWidget):
 
         self.current_step_row = row
 
-        if 0 <= row < self.sequence_table.rowCount():
+        if not (0 <= row < self.sequence_table.rowCount()):
+            return
 
-            item = self.sequence_table.item(row, 6)
+        # Check whether this step is AC Hipot Test.
+        steps = self.model_configuration.get(
+            "sequence", {}
+        ).get("steps", [])
 
-            if item:
-                item.setText("RUNNING")
+        configuration = (
+            steps[row]
+            if row < len(steps)
+            else {}
+        )
+
+        parameters = configuration.get(
+            "parameters", {}
+        )
+
+        is_ac_hipot = (
+            configuration.get("type") == "instrument_test"
+            and parameters.get("function") == "acw"
+        )
+
+        self.set_table_item(
+            row,
+            6,
+            "WAITING" if is_ac_hipot else "RUNNING"
+        )
+
 
     def on_step_finished(self, current, message):
 
@@ -833,14 +953,67 @@ class DashboardPage(QWidget):
 
         if 0 <= row < self.sequence_table.rowCount():
 
-            item = self.sequence_table.item(row, 6)
-
-            if item:
-                item.setText("OK")
+            self.set_table_item(
+                row,
+                6,
+                "OK"
+            )
 
     def handle_interaction(self, request):
 
         interaction_type = request.get("type")
+
+
+        if interaction_type == "instrument_test_confirmation":
+
+            instrument_id = request.get(
+                "instrument",
+                "TOS9302"
+            )
+
+            confirmation = QMessageBox.question(
+                self,
+                "AC Hipot Test Confirmation",
+                (
+                    "AC Hipot Test is ready to start.\n\n"
+                    f"Instrument: {instrument_id}\n\n"
+                    "Before proceeding, ensure that:\n"
+                    "- The product is correctly connected.\n"
+                    "- The test area is safe.\n"
+                    "- All test connections have been checked.\n\n"
+                    "Press OK to start the AC Hipot Test."
+                ),
+                (
+                    QMessageBox.StandardButton.Ok
+                    | QMessageBox.StandardButton.Cancel
+                ),
+                QMessageBox.StandardButton.Cancel
+            )
+
+            if confirmation != QMessageBox.StandardButton.Ok:
+
+                self.abort_sequence()
+                return
+
+            # Operator approved.
+            # Change status BEFORE submitting the execution request.
+            row = self.current_step_row
+
+            if row is not None and 0 <= row < self.sequence_table.rowCount():
+
+                self.set_table_item(
+                    row,
+                    6,
+                    "RUNNING"
+                )
+
+            # Only now can InstrumentTestStep execute TOS9302.
+            self.engine.submit_interaction({
+                "confirmed": True
+            })
+
+            return
+
 
         if interaction_type == "input":
 
@@ -916,8 +1089,15 @@ class DashboardPage(QWidget):
 
         elif interaction_type == "measurement":
 
+            result = request.get("result", {})
+
+            # Update Sequence Table before opening dialog.
+            self.update_instrument_test_measurement(
+                result
+            )
+
             dialog = MeasurementDialog(
-                request.get("result", {}),
+                result,
                 self
             )
 
@@ -926,61 +1106,6 @@ class DashboardPage(QWidget):
             self.engine.submit_interaction({
                 "continue": True
             })
-
-        elif interaction_type == "live_measurement":
-
-            dialog = LiveMeasurementDialog(
-                instrument=request.get(
-                    "instrument",
-                    "WT310E"
-                ),
-                duration_s=request.get(
-                    "duration_s",
-                    10
-                ),
-                sample_interval_s=request.get(
-                    "sample_interval_s",
-                    1
-                ),
-                parent=self
-            )
-
-            self.engine.measurement_sample.connect(
-                dialog.update_measurement
-            )
-
-            self.engine.measurement_completed.connect(
-                dialog.finish_measurement
-            )
-
-            self.engine.measurement_failed.connect(
-                dialog.show_error
-            )
-
-            dialog.cancel_requested.connect(
-                self.abort_sequence
-            )
-
-            try:
-                dialog.exec()
-
-            finally:
-
-                self.engine.measurement_sample.disconnect(
-                    dialog.update_measurement
-                )
-
-                self.engine.measurement_completed.disconnect(
-                    dialog.finish_measurement
-                )
-
-                self.engine.measurement_failed.disconnect(
-                    dialog.show_error
-                )
-
-                dialog.cancel_requested.disconnect(
-                    self.abort_sequence
-                )
 
         elif interaction_type == "ac_volt_confirmation":
 
@@ -1028,6 +1153,78 @@ class DashboardPage(QWidget):
             label.setText(
                 f"{field.replace('_', ' ').title()}: {value}"
             )
+
+
+    # ==========================================
+    # UPDATE INSTRUMENT TEST MEASUREMENT
+    # ==========================================
+
+    def update_instrument_test_measurement(self, result):
+
+        row = self.current_step_row
+
+        if row is None:
+            return
+
+        if not (0 <= row < self.sequence_table.rowCount()):
+            return
+
+        function = result.get("function")
+
+        display_lines = []
+
+        # ======================================
+        # AC HIPOT TEST
+        # ======================================
+
+        if function == "acw":
+
+            current_A = result.get("current_A")
+
+            if current_A is not None:
+
+                current_mA = float(current_A) * 1000
+
+                display_lines.append(
+                    f"Current: {current_mA:.3f} mA"
+                )
+
+        # ======================================
+        # GROUND BOND TEST
+        # ======================================
+
+        elif function in ("ecac", "ecdc"):
+
+            test_current = result.get("test_current_A")
+            frequency = result.get("frequency_Hz")
+            resistance = result.get("measured_resistance_mOhm")
+
+            if test_current is not None:
+                display_lines.append(
+                    f"Current: {float(test_current):.3f} A"
+                )
+
+            if frequency is not None:
+                display_lines.append(
+                    f"Frequency: {float(frequency):.2f} Hz"
+                )
+
+            if resistance is not None:
+                display_lines.append(
+                    f"Resistance: {float(resistance):.3f} mΩ"
+                )
+
+        if not display_lines:
+            display_lines.append("No measurement data")
+
+        self.set_table_item(
+            row,
+            5,
+            "\n".join(display_lines)
+        )
+
+        self.sequence_table.resizeRowToContents(row)
+
 
     def focus_start_button(self):
         if self.start_button.isEnabled():
@@ -1094,7 +1291,11 @@ class DashboardPage(QWidget):
             item = self.sequence_table.item(last, 6)
 
             if item:
-                item.setText("OK")
+                self.set_table_item(
+                    last,
+                    6,
+                    "OK"
+                )
 
         self.add_log(
             "DONE",

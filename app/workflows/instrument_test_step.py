@@ -19,24 +19,46 @@ class InstrumentTestStep(BaseStep):
                 message="Instrument ID or function is missing."
             )
 
-        runtime = self.runtime
-
-        if runtime is None:
+        if self.runtime is None:
             return StepOutcome(
                 success=False,
                 message="Workflow step runtime is missing."
             )
 
+        self._instrument_id = instrument_id
+        self._function = function
+        self._parameters = parameters
+        self._stage = None
+        self._measurement_result = None
+
+        # AC Hipot requires operator confirmation first.
+        if function == "acw":
+
+            self._stage = "confirmation"
+
+            return StepOutcome(
+                success=True,
+                message="Waiting for AC Hipot confirmation.",
+                interaction={
+                    "type": "instrument_test_confirmation",
+                    "function": function,
+                    "instrument": instrument_id
+                }
+            )
+
+        # Other instrument tests retain their original flow.
+        return self.execute_instrument_test()
+
+    def execute_instrument_test(self):
+
         try:
 
             result = self._execute_test(
-                runtime,
-                instrument_id,
-                function,
-                parameters
+                self.runtime,
+                self._instrument_id,
+                self._function,
+                self._parameters
             )
-
-            step_id = self.step_id or "step"
 
             judgment = str(
                 result.get("judgment", "")
@@ -47,32 +69,37 @@ class InstrumentTestStep(BaseStep):
                     f"Invalid instrument test judgment: {judgment}"
                 )
 
-            runtime.store_measurement_result(
+            step_id = self.step_id or "step"
+
+            self.runtime.store_measurement_result(
                 step_id,
                 result
             )
 
-            overall_judgment = runtime.update_judgment(
+            overall_judgment = self.runtime.update_judgment(
                 step_id,
                 judgment
             )
 
-            runtime.log(
+            self.runtime.log(
                 "MEASUREMENT",
-                f"{function}: {judgment}"
+                f"{self._function}: {judgment}"
             )
 
-            runtime.log(
+            self.runtime.log(
                 "JUDGMENT",
                 f"Overall judgment: {overall_judgment}"
             )
 
             if judgment in ("FAIL", "NG"):
-                runtime.request_stop_after_interaction()
+                self.runtime.request_stop_after_interaction()
+
+            self._measurement_result = result
+            self._stage = "measurement"
 
             return StepOutcome(
                 success=True,
-                message=f"{function} test completed: {judgment}.",
+                message=f"{self._function} test completed: {judgment}.",
                 interaction={
                     "type": "measurement",
                     "result": result
@@ -86,6 +113,39 @@ class InstrumentTestStep(BaseStep):
                 success=False,
                 message=str(error)
             )
+
+    def complete(self, context, response):
+
+        # Operator confirmed AC Hipot.
+        if self._stage == "confirmation":
+
+            if response.get("confirmed") is not True:
+                return StepOutcome(
+                    success=False,
+                    message="AC Hipot confirmation was rejected."
+                )
+
+            # Execute TOS9302 only after confirmation.
+            return self.execute_instrument_test()
+
+        # Operator acknowledged measurement result.
+        if (
+            self._stage == "measurement"
+            and response.get("continue") is True
+        ):
+
+            self._stage = None
+
+            return StepOutcome(
+                success=True,
+                message="Instrument test result acknowledged.",
+                data=self._measurement_result
+            )
+
+        return StepOutcome(
+            success=False,
+            message="Invalid instrument test interaction response."
+        )
 
     @staticmethod
     def _execute_test(

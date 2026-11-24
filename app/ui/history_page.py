@@ -117,24 +117,6 @@ class HistoryPage(QWidget):
             1, 2
         )
 
-        # Application mode
-
-        filter_layout.addWidget(
-            QLabel("Application Mode"),
-            0, 3
-        )
-
-        self.mode_combo = QComboBox()
-
-        self.mode_combo.addItem("All Modes", "")
-        self.mode_combo.addItem("SIMULATION", "SIMULATION")
-        self.mode_combo.addItem("HARDWARE", "HARDWARE")
-
-        filter_layout.addWidget(
-            self.mode_combo,
-            1, 3
-        )
-
         # Date filter
 
         self.date_filter_checkbox = QCheckBox(
@@ -204,7 +186,7 @@ class HistoryPage(QWidget):
 
         self.table = QTableWidget()
 
-        self.table.setColumnCount(10)
+        self.table.setColumnCount(9)
 
         self.table.setHorizontalHeaderLabels([
             "ID",
@@ -215,7 +197,6 @@ class HistoryPage(QWidget):
             "Operator Name",
             "Judgment",
             "Status",
-            "Mode",
             "Sequence"
         ])
 
@@ -368,7 +349,6 @@ class HistoryPage(QWidget):
 
         model_id = self.model_combo.currentData()
         judgment = self.judgment_combo.currentData()
-        application_mode = self.mode_combo.currentData()
 
         serial_number = (
             self.serial_input.text().strip()
@@ -382,18 +362,8 @@ class HistoryPage(QWidget):
                 model_id=model_id,
                 judgment=judgment,
                 serial_number=serial_number,
-                application_mode=application_mode,
                 limit=500
             )
-
-            if application_mode:
-
-                results = [
-                    result
-                    for result in results
-                    if result.get("application_mode")
-                    == application_mode
-                ]
 
             self.results = results
 
@@ -426,7 +396,6 @@ class HistoryPage(QWidget):
 
         self.model_combo.setCurrentIndex(0)
         self.judgment_combo.setCurrentIndex(0)
-        self.mode_combo.setCurrentIndex(0)
 
         self.date_filter_checkbox.setChecked(False)
 
@@ -465,11 +434,10 @@ class HistoryPage(QWidget):
                 result.get("timestamp"),
                 result.get("serial_number"),
                 model_name,
-                result.get("execution_status"),
                 result.get("operator_id"),
                 result.get("operator_name"),
                 result.get("judgment"),
-                result.get("application_mode"),
+                result.get("execution_status"),
                 result.get("sequence_id")
             ]
 
