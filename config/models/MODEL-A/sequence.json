@@ -26,19 +26,7 @@
             "type": "input"
         },
         {
-            "enabled": false,
-            "id": "step_006",
-            "name": "serial_test",
-            "parameters": {
-                "field": "Serial Test",
-                "label": "Serial Test Barcode",
-                "placeholder": "Scan Serial Test Barcode",
-                "required": true
-            },
-            "type": "input"
-        },
-        {
-            "enabled": false,
+            "enabled": true,
             "id": "step_003",
             "name": "Scan Door Bottom",
             "parameters": {
@@ -51,6 +39,15 @@
         },
         {
             "enabled": true,
+            "id": "step_006",
+            "name": "Approval",
+            "parameters": {
+                "message": "PASTIKAN AC CORD DIPASANG"
+            },
+            "type": "approval"
+        },
+        {
+            "enabled": true,
             "id": "step_004",
             "name": "AC Hipot Test",
             "parameters": {
@@ -58,6 +55,15 @@
                 "instrument": "kikusui_tos9302"
             },
             "type": "instrument_test"
+        },
+        {
+            "enabled": true,
+            "id": "step_007",
+            "name": "Approval",
+            "parameters": {
+                "message": "Pastikan AC Cord belum terpasang ke outlet Current check.\\n Jika Periapan selesai klik OK."
+            },
+            "type": "approval"
         },
         {
             "enabled": true,

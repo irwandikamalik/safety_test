@@ -48,6 +48,21 @@
                 "required": true
             },
             "type": "input"
+        },
+        {
+            "enabled": true,
+            "id": "step_004",
+            "name": "Instrument Measurement",
+            "parameters": {
+                "duration_s": 5,
+                "instrument": "wt310e",
+                "measurements": [
+                    "voltage",
+                    "current"
+                ],
+                "sample_interval_s": 5
+            },
+            "type": "instrument_measurement"
         }
     ],
     "version": 1

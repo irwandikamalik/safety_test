@@ -141,12 +141,6 @@ class MeasurementWorker(QThread):
                 self.application_configuration
             )
 
-            print("\n========== WORKER DEBUG ==========")
-            print("REQUESTED ID:", repr(self.instrument_id))
-            print("LOADED IDS:", list(manager.instruments.keys()))
-            print("WT310E EXISTS:", "wt310e" in manager.instruments)
-            print("=================================\n")
-
             connected = manager.connect(
                 self.instrument_id
             )

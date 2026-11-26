@@ -76,7 +76,7 @@ class DashboardPage(QWidget):
         root.addWidget(title)
 
         subtitle = QLabel(
-            "Test following the prescribed procedure."
+            "Test following the Described procedure."
         )
         subtitle.setObjectName("Muted")
         root.addWidget(subtitle)
@@ -97,13 +97,13 @@ class DashboardPage(QWidget):
         )
         self.serial_input.setMinimumHeight(38)
 
-        self.check_model_button = QPushButton(
+        self.check_button = QPushButton(
             "Check"
         )
-        self.check_model_button.setMinimumHeight(38)
+        self.check_button.setMinimumHeight(38)
 
         serial_row.addWidget(self.serial_input, 1)
-        serial_row.addWidget(self.check_model_button)
+        serial_row.addWidget(self.check_button)
 
         model_layout.addLayout(serial_row)
 
@@ -122,7 +122,7 @@ class DashboardPage(QWidget):
             self.detect_model
         )
  
-        self.check_model_button.clicked.connect(
+        self.check_button.clicked.connect(
             self.detect_model
         )
 
@@ -179,7 +179,7 @@ class DashboardPage(QWidget):
         controls = QHBoxLayout()
 
         self.start_button = QPushButton(
-            "Start Sequence (Y)"
+            "Start Sequence (Enter)"
         )
 
         self.start_button.setObjectName("PrimaryButton")
@@ -211,7 +211,7 @@ class DashboardPage(QWidget):
         # START SEQUENCE - Y
 
         self.start_shortcut = QShortcut(
-            QKeySequence("Y"),
+            QKeySequence("Return"),
             self
         )
 
@@ -220,7 +220,7 @@ class DashboardPage(QWidget):
         )
 
         self.start_shortcut.activated.connect(
-            self.start_button.click
+            self.handle_enter_shortcut
         )
 
         # ABORT SEQUENCE - ESC
@@ -241,97 +241,18 @@ class DashboardPage(QWidget):
         root.addWidget(sequence_frame)
 
 
-    # ==========================================
-    # AC VOLT CONFIRMATION
-    # ==========================================
+    def handle_enter_shortcut(self):
 
-    def handle_ac_volt_confirmation(self, request):
+        # Kondisi 1: Model belum terdeteksi
+        if not self.selected_model_id:
 
-        parameters = request.get("parameters", {})
+            self.check_button.click()
+            return
 
-        dialog = ACVoltConfirmationDialog(
-            evaluation_duration_s=parameters.get(
-                "evaluation_duration_s", 10
-            ),
-            sample_interval_s=parameters.get(
-                "sample_interval_s", 1
-            ),
-            parent=self
-        )
+        # Kondisi 2: Model sudah terdeteksi
+        if self.start_button.isEnabled():
 
-        engine = self.engine
-
-        # Operator approval
-        dialog.enable_output_requested.connect(
-            engine.approve_ac_volt_output
-        )
-
-        dialog.pass_confirmation_requested.connect(
-            engine.confirm_ac_volt_pass
-        )
-
-        dialog.cancel_requested.connect(
-            engine.cancel_ac_volt_confirmation
-        )
-
-        # Worker status
-        engine.ac_volt_status_changed.connect(
-            dialog.update_status
-        )
-
-        engine.ac_volt_configuration_ready.connect(
-            dialog.configuration_ready
-        )
-
-        engine.ac_volt_sample_received.connect(
-            dialog.update_measurement
-        )
-
-        engine.ac_volt_evaluation_passed.connect(
-            dialog.show_pass
-        )
-
-        engine.ac_volt_completed.connect(
-            dialog.finish_confirmation
-        )
-
-        engine.ac_volt_failed.connect(
-            dialog.show_error
-        )
- 
-        engine.aborted.connect(
-            dialog.finish_abort
-        )
-
-        try:
-
-            engine.start_ac_volt_confirmation(
-                parameters
-            )
-
-            dialog.exec()
-
-        finally:
-
-            # Disconnect dialog-specific signals
-            connections = [
-                (dialog.enable_output_requested, engine.approve_ac_volt_output),
-                (dialog.pass_confirmation_requested, engine.confirm_ac_volt_pass),
-                (dialog.cancel_requested, engine.cancel_ac_volt_confirmation),
-                (engine.ac_volt_status_changed, dialog.update_status),
-                (engine.ac_volt_configuration_ready, dialog.configuration_ready),
-                (engine.ac_volt_sample_received, dialog.update_measurement),
-                (engine.ac_volt_evaluation_passed, dialog.show_pass),
-                (engine.ac_volt_completed, dialog.finish_confirmation),
-                (engine.ac_volt_failed, dialog.show_error),
-                (engine.aborted, dialog.finish_abort),
-            ]
-
-            for signal, slot in connections:
-                try:
-                    signal.disconnect(slot)
-                except (RuntimeError, TypeError):
-                    pass
+            self.start_button.click()
 
     # ==========================================
     # SERIAL NUMBER MODEL DETECTION
@@ -438,6 +359,7 @@ class DashboardPage(QWidget):
             self.detected_serial_number = (
                 mapping["serial_number"]
             )
+            
 
             model_name = configuration["model"].get(
                 "model_name",
@@ -726,7 +648,7 @@ class DashboardPage(QWidget):
             upper = "-"
             description = "-"
 
-            if step_type == "validate_serial":
+            if step_type == ("validate_serial"):
                 description = self.detected_serial_number or "-"
 
             if step_type == "instrument_test":
@@ -895,7 +817,7 @@ class DashboardPage(QWidget):
             self.abort_button.setEnabled(True)
             
             self.serial_input.setEnabled(False)
-            self.check_model_button.setEnabled(False)
+            self.check_button.setEnabled(False)
 
             self.engine.start()
 
@@ -962,58 +884,6 @@ class DashboardPage(QWidget):
     def handle_interaction(self, request):
 
         interaction_type = request.get("type")
-
-
-        if interaction_type == "instrument_test_confirmation":
-
-            instrument_id = request.get(
-                "instrument",
-                "TOS9302"
-            )
-
-            confirmation = QMessageBox.question(
-                self,
-                "AC Hipot Test Confirmation",
-                (
-                    "AC Hipot Test is ready to start.\n\n"
-                    f"Instrument: {instrument_id}\n\n"
-                    "Before proceeding, ensure that:\n"
-                    "- The product is correctly connected.\n"
-                    "- The test area is safe.\n"
-                    "- All test connections have been checked.\n\n"
-                    "Press OK to start the AC Hipot Test."
-                ),
-                (
-                    QMessageBox.StandardButton.Ok
-                    | QMessageBox.StandardButton.Cancel
-                ),
-                QMessageBox.StandardButton.Cancel
-            )
-
-            if confirmation != QMessageBox.StandardButton.Ok:
-
-                self.abort_sequence()
-                return
-
-            # Operator approved.
-            # Change status BEFORE submitting the execution request.
-            row = self.current_step_row
-
-            if row is not None and 0 <= row < self.sequence_table.rowCount():
-
-                self.set_table_item(
-                    row,
-                    6,
-                    "RUNNING"
-                )
-
-            # Only now can InstrumentTestStep execute TOS9302.
-            self.engine.submit_interaction({
-                "confirmed": True
-            })
-
-            return
-
 
         if interaction_type == "input":
 
@@ -1087,7 +957,7 @@ class DashboardPage(QWidget):
                 "approved": True
             })
 
-        elif interaction_type == "measurement":
+        elif interaction_type == "tos9302":
 
             result = request.get("result", {})
 
@@ -1109,8 +979,14 @@ class DashboardPage(QWidget):
 
         elif interaction_type == "ac_volt_confirmation":
 
-            self.handle_ac_volt_confirmation(request)
-        
+            parameters = request.get("parameters", {})
+
+            engine = self.engine
+
+            engine.start_ac_volt_confirmation(
+                parameters
+            )
+
         else:
 
             self.workflow_failed(
@@ -1247,7 +1123,7 @@ class DashboardPage(QWidget):
         self.abort_button.setEnabled(False)
 
         self.serial_input.setEnabled(False)
-        self.check_model_button.setEnabled(False)
+        self.check_button.setEnabled(False)
 
         self.engine.stop()
 
@@ -1259,7 +1135,7 @@ class DashboardPage(QWidget):
         self.abort_button.setEnabled(False)
 
         self.serial_input.setEnabled(True)
-        self.check_model_button.setEnabled(True)
+        self.check_button.setEnabled(True)
 
         QTimer.singleShot(
             0,
@@ -1306,7 +1182,7 @@ class DashboardPage(QWidget):
         self.abort_button.setEnabled(False)
 
         self.serial_input.setEnabled(True)
-        self.check_model_button.setEnabled(True)
+        self.check_button.setEnabled(True)
 
         QMessageBox.information(
             self,
@@ -1326,7 +1202,7 @@ class DashboardPage(QWidget):
         self.abort_button.setEnabled(False)
 
         self.serial_input.setEnabled(True)
-        self.check_model_button.setEnabled(True)
+        self.check_button.setEnabled(True)
 
         QMessageBox.critical(
             self,

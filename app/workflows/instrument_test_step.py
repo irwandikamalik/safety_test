@@ -31,21 +31,6 @@ class InstrumentTestStep(BaseStep):
         self._stage = None
         self._measurement_result = None
 
-        # AC Hipot requires operator confirmation first.
-        if function == "acw":
-
-            self._stage = "confirmation"
-
-            return StepOutcome(
-                success=True,
-                message="Waiting for AC Hipot confirmation.",
-                interaction={
-                    "type": "instrument_test_confirmation",
-                    "function": function,
-                    "instrument": instrument_id
-                }
-            )
-
         # Other instrument tests retain their original flow.
         return self.execute_instrument_test()
 
@@ -101,7 +86,7 @@ class InstrumentTestStep(BaseStep):
                 success=True,
                 message=f"{self._function} test completed: {judgment}.",
                 interaction={
-                    "type": "measurement",
+                    "type": "tos9302",
                     "result": result
                 },
                 data=result

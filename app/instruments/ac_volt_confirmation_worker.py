@@ -262,27 +262,6 @@ class ACVoltConfirmationWorker(QThread):
                 configuration
             )
 
-
-            # ------------------------------------------
-            # WAIT FOR OPERATOR APPROVAL
-            # ------------------------------------------
-
-            self.status_changed.emit(
-                "Waiting for operator safety approval..."
-            )
-
-            while not self.approval_event.wait(0.1):
-
-                if self._is_stopping():
-                    raise RuntimeError(
-                        "AC Volt Confirmation was cancelled."
-                    )
-
-            if self._is_stopping():
-                raise RuntimeError(
-                    "AC Volt Confirmation was cancelled."
-                )
-
             # ------------------------------------------
             # ACTIVATE PCR500M
             # ------------------------------------------
@@ -321,35 +300,6 @@ class ACVoltConfirmationWorker(QThread):
                 )
 
                 return
-
-            # ------------------------------------------
-            # PASS - KEEP OUTPUT ON
-            # ------------------------------------------
-
-            self.status_changed.emit(
-                "PASS - Waiting for operator confirmation."
-            )
-
-            self.evaluation_passed.emit(
-                evaluation_result
-            )
-
-            self._wait_for_pass_confirmation(
-                evaluation_result
-            )
-
-            if self._is_stopping():
-                raise RuntimeError(
-                    "AC Volt Confirmation was cancelled."
-                )
-
-            # ------------------------------------------
-            # OPERATOR PRESSED OK
-            # ------------------------------------------
-
-            self.status_changed.emit(
-                "Operator confirmed PASS. Turning output OFF..."
-            )
 
             self._shutdown_instruments()
 
