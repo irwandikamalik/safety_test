@@ -28,9 +28,9 @@
         {
             "enabled": true,
             "id": "step_006",
-            "name": "serial_test",
+            "name": "Scan Serial Test",
             "parameters": {
-                "field": "Serial Test",
+                "field": "serial_test",
                 "label": "Serial Test Barcode",
                 "placeholder": "Scan Serial Test Barcode",
                 "required": true

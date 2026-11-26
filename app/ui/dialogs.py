@@ -186,7 +186,7 @@ class ApprovalDialog(QDialog):
         buttons = QHBoxLayout()
 
         self.cancel_button = QPushButton("Cancel (ESC)")
-        self.approve_button = QPushButton("Approve (Y)")
+        self.approve_button = QPushButton("Approve (Enter)")
 
         self.approve_button.setObjectName("SuccessButton")
 
@@ -216,19 +216,12 @@ class ApprovalDialog(QDialog):
 
             key = event.key()
 
-            if key == Qt.Key.Key_Y:
+            if (key == Qt.Key.Key_Enter or key == Qt.Key.Key_Return):
                 self.accept()
                 return True
 
             if key == Qt.Key.Key_Escape:
                 self.reject()
-                return True
-
-            if key in (
-                Qt.Key.Key_Return,
-                Qt.Key.Key_Enter
-            ):
-                # Enter must not activate either button.
                 return True
 
         return super().eventFilter(watched, event)
@@ -237,19 +230,12 @@ class ApprovalDialog(QDialog):
 
         key = event.key()
 
-        if key == Qt.Key.Key_Y:
+        if key == (key == Qt.Key.Key_Enter or key == Qt.Key.Key_Return):
             self.accept()
             return
 
         if key == Qt.Key.Key_Escape:
             self.reject()
-            return
-
-        if key in (
-            Qt.Key.Key_Return,
-            Qt.Key.Key_Enter
-        ):
-            event.ignore()
             return
 
         event.ignore()

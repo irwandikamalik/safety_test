@@ -156,7 +156,7 @@ class DashboardPage(QWidget):
         self.sequence_table.setColumnWidth(6, 150)
 
         self.sequence_table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.Fixed
+            QHeaderView.ResizeMode.Stretch
         )
         self.sequence_table.horizontalHeader().setDefaultAlignment(
             Qt.AlignmentFlag.AlignCenter
@@ -172,6 +172,8 @@ class DashboardPage(QWidget):
 
 
         self.progress = QProgressBar()
+        self.progress.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.progress.text().upper()
         self.progress.setValue(0)
 
         sequence_layout.addWidget(self.progress)
@@ -359,6 +361,9 @@ class DashboardPage(QWidget):
             self.detected_serial_number = (
                 mapping["serial_number"]
             )
+            self.detected_field = (
+                mapping["field"]
+            )
             
 
             model_name = configuration["model"].get(
@@ -419,6 +424,7 @@ class DashboardPage(QWidget):
             self.model_validation = None
             self.serial_mapping_result = None
             self.detected_serial_number = None
+            self.detected_field = None
 
             self.model_status_label.setStyleSheet(
                 "color: #FF8585; font-weight: bold;"
@@ -650,6 +656,9 @@ class DashboardPage(QWidget):
 
             if step_type == ("validate_serial"):
                 description = self.detected_serial_number or "-"
+
+            if step_type == ("input"):
+                description = self.detected_field or "-"
 
             if step_type == "instrument_test":
 
